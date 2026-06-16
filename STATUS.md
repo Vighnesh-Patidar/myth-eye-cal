@@ -57,9 +57,12 @@ shell, or just trust `test_websocket_server`'s in-process loopback.)*
 | MediaPipe Pose Landmarker | **DONE — compiles + model bundled** (`PoseEstimator`) | v0.2 |
 | Debug APK build | **DONE — builds on Linux toolchain (26 MB)** | v0.3 |
 | On-device run (deploy) | pending — needs a phone (VirtualBox USB passthrough or copy APK) | v0.3 |
-| Real `mith::` runtime | `mith-atomas` submodule (mock stands in — `mock/mith/`) — needed for multi-device | all |
-| Native OpenGL ES renderer | optional (browser path works today) | v0.2/v0.3 |
-| Multi-phone + latency runs | needs ≥3 physical devices + real mith-atomas | v0.3 |
+| Multi-device transport | **DONE (stopgap) — `UdpBeaconTransport`** over Wi-Fi UDP (§15.10); starts on-device | v0.3 |
+| Real `mith::` runtime | `mith-atomas` submodule (mock + UDP stopgap stand in — `mock/mith/`, `transport/`) | all |
+| Co-localization (shared world frame) | **OPEN** — multi-phone fusion incoherent without it (§15.10); manual position pin added, orientation alignment unsolved | v0.3 |
+| Native OpenGL ES renderer | optional (browser path works; viewer upgraded — cylinder bones/smoothing) | v0.2/v0.3 |
+| Multi-phone + latency runs | needs ≥2 phones on one Wi-Fi + co-localization | v0.3 |
+| Single-device pose quality | **deferred** (§15.11): degenerate depth, gyro drift, grayscale — single-phone is not the target | v0.3+ |
 
 The interfaces these plug into already exist and are exercised by tests:
 `PoseEstimatorBackend` (pose), `Frame`/`IMUFrame` (capture/IMU),

@@ -947,8 +947,54 @@ node is pinned at the origin; `mith::` is still the mock, so **multi-device
 fusion needs the real mith-atomas transport**. On-device run is pending a deploy
 (VirtualBox USB passthrough or copying the APK to the host).
 
+### 15.10 UDP multi-device transport (stopgap for mith-atomas) *(feature)*
+
+`UdpBeaconTransport` (`transport/udp_beacon_transport.{h,cpp}`) carries the user
+beacon channel (§4.5) across phones until the real mith-atomas transport is
+vendored. Each node broadcasts its 128-byte `KeypointFramePayload` plus sender
+id, LOS state, and world position over Wi-Fi UDP (port 8079); every node fuses
+its own observation **and** all neighbours' — so a phone with no line of sight
+renders the pose from others (through-wall). No clock sync assumed: the receiver
+stamps arrival time (the fusion window uses that). On Android a Wi-Fi
+`MulticastLock` is acquired so the driver delivers broadcast packets. Verified on
+Linux (`test_udp_transport`, two instances exchange a beacon) and starts
+on-device (`UDP beacon transport on udp/8079`). The interface mirrors the beacon
+channel so mith-atomas swaps in cleanly.
+
+**Open — shared world frame (co-localization).** Multi-device fusion is only
+coherent if all phones agree on a common frame. Today each phone projects in its
+own camera frame pinned at the origin (`nativeSetNodePose` allows a manual
+position pin, but cross-device *orientation* alignment is unsolved without a
+shared reference — IMU yaw drifts, no magnetometer fusion). Without
+co-localization, fused multi-phone poses will not align. Real fix: a shared
+anchor or mutual-observation calibration. Tracked for v0.3.
+
+### 15.11 Single-device pose quality — deferred improvements *(future work)*
+
+A single phone is **not** the target (the design is multi-view geometric); its
+pose is intentionally left limited for now. Known limitations + planned fixes:
+
+- **Degenerate depth → flat pose.** `lensPriorM` is a constant and temporal
+  stereo needs phone translation + a static subject, so keypoints collapse to
+  ~the lens-prior distance. Fix: feed `CaptureResult.LENS_FOCUS_DISTANCE`
+  per-frame; optionally an opt-in single-device mode using MediaPipe's metric
+  world-landmarks for a real 3D skeleton (deviates from the §4.3/§13 "no depth
+  model" ethos — hence opt-in).
+- **Orientation drift → skeleton wanders.** The world projection uses raw
+  dead-reckoned gyro (no gravity/magnetometer correction). Fix: a
+  gravity-referenced orientation (accelerometer tilt — drift-free pitch/roll;
+  yaw needs a magnetometer) for projection, keeping the IMU *delta* for depth
+  de-rotation only.
+- **Grayscale bitmap** for MediaPipe lowers landmark accuracy → full YUV→RGB.
+
+These are tracked for v0.3+; the multi-phone path (§15.10) is where accuracy
+comes from.
+
 ---
 
+*Document version: 0.4.1 — UDP multi-device transport (§15.10) + viewer render
+upgrade (cylinder bones, smoothing, auto-framing); single-device pose limits
+recorded as deferred work (§15.11)*
 *Document version: 0.4.0 — Android port scaffolded; debug APK builds (NDK
 libmec_jni.so + Camera2/IMU/MediaPipe Kotlin shell, §15.9). On-device run +
 real mith-atomas remain*
