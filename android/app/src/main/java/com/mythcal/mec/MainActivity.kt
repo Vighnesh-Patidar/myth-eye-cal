@@ -14,6 +14,7 @@ import android.view.SurfaceView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -65,8 +66,10 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
 
         permissionGranted = hasPerm(Manifest.permission.CAMERA)
         if (!permissionGranted || !hasPerm(Manifest.permission.ACCESS_FINE_LOCATION)) {
-            ActivityCompat.requestPermissions(this,
-                arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION), 1)
+            ActivityCompat.requestPermissions(this, arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION), 1)
         }
         maybeStart()
         ui.post(statusTick)
@@ -111,28 +114,37 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
         findViewById<Button>(R.id.setPos).setOnClickListener {
             MecNative.nativeSetNodePose(handle, field(R.id.posX), field(R.id.posY), field(R.id.posZ))
         }
-        // GPS co-localization: capture a shared origin, then fill ENU position.
-        findViewById<Button>(R.id.gpsOrigin).setOnClickListener {
-            val info = findViewById<TextView>(R.id.gpsInfo)
-            info.text = if (location?.setOrigin() == true) "origin set (±${location?.accuracyM()?.toInt()}m)"
-                        else "no GPS fix yet"
+        // Absolute GPS origin (set the SAME lat/lon/alt on every phone), then
+        // each phone fills its ENU offset from it.
+        findViewById<Button>(R.id.setOrigin).setOnClickListener {
+            location?.setOrigin(dfield(R.id.oLat), dfield(R.id.oLon), dfield(R.id.oAlt))
+            toast("origin set")
+        }
+        findViewById<Button>(R.id.originHere).setOnClickListener {
+            val loc = location
+            if (loc?.setOriginHere() == true) {
+                findViewById<EditText>(R.id.oLat).setText(String.format("%.7f", loc.lat))
+                findViewById<EditText>(R.id.oLon).setText(String.format("%.7f", loc.lon))
+                findViewById<EditText>(R.id.oAlt).setText(String.format("%.1f", loc.alt))
+                toast("origin = here (±${loc.accuracyM.toInt()}m)")
+            } else toast("no GPS fix yet")
         }
         findViewById<Button>(R.id.gpsFill).setOnClickListener {
             val enu = location?.enu()
-            val info = findViewById<TextView>(R.id.gpsInfo)
-            if (enu == null) { info.text = if (location?.hasOrigin() != true) "set origin first" else "no GPS fix" }
+            if (enu == null) toast(if (location?.hasOrigin != true) "set origin first" else "no GPS fix")
             else {
                 findViewById<EditText>(R.id.posX).setText(String.format("%.2f", enu[0]))
                 findViewById<EditText>(R.id.posY).setText(String.format("%.2f", enu[1]))
                 findViewById<EditText>(R.id.posZ).setText(String.format("%.2f", enu[2]))
                 MecNative.nativeSetNodePose(handle, enu[0], enu[1], enu[2])
-                info.text = "gps pos set (±${location?.accuracyM()?.toInt()}m)"
+                toast("position set from GPS")
             }
         }
     }
 
-    private fun field(id: Int): Float =
-        findViewById<EditText>(id).text.toString().toFloatOrNull() ?: 0f
+    private fun field(id: Int): Float = findViewById<EditText>(id).text.toString().toFloatOrNull() ?: 0f
+    private fun dfield(id: Int): Double = findViewById<EditText>(id).text.toString().toDoubleOrNull() ?: 0.0
+    private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_SHORT).show()
 
     // Camera background thread.
     override fun onFrame(yPlane: ByteArray, bitmap: Bitmap, w: Int, h: Int, tsNs: Long) {
@@ -156,8 +168,21 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
                     append("viewers: $clients\n")
                     append("ws://$ip:$port/pose")
                 }
+                findViewById<TextView>(R.id.gpsInfo).text = gpsLine()
             }
             ui.postDelayed(this, 500)
+        }
+    }
+
+    private fun gpsLine(): String {
+        val loc = location ?: return "gps: —"
+        return when {
+            !hasPerm(Manifest.permission.ACCESS_FINE_LOCATION) &&
+                !hasPerm(Manifest.permission.ACCESS_COARSE_LOCATION) -> "gps: permission denied"
+            !loc.servicesEnabled() -> "gps: location services OFF"
+            !loc.hasFix -> "gps: acquiring… (needs sky/Wi-Fi)"
+            else -> "gps ${"%.6f".format(loc.lat)}, ${"%.6f".format(loc.lon)} " +
+                "±${loc.accuracyM.toInt()}m/${loc.provider}${if (loc.hasOrigin) " [origin set]" else ""}"
         }
     }
 

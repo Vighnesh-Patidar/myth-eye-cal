@@ -697,9 +697,11 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
 
 ### v1.0 — Stable
 - [ ] API stability
-- [ ] Doxygen
-- [ ] CI: Linux x86 (fusion core) + Android aarch64 (observer pipeline)
-- [ ] Accuracy benchmark: fused pose error vs ground truth at 2/3/4 observers
+- [ ] Doxygen (deferred)
+- [x] CI: GitHub Actions — C++ core build+test (Linux) + Android debug APK
+      (`.github/workflows/ci.yml`)
+- [~] Accuracy benchmark: methodology defined (`docs/ACCURACY_METHODOLOGY.md`);
+      run pending 4-device hardware
 - [ ] Single-observer fallback mode (degrades gracefully with 1 LOS node)
 
 ---

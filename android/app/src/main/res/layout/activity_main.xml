@@ -21,44 +21,56 @@
         android:fontFamily="monospace"
         android:text="Starting…" />
 
-    <!-- Co-localization (§15.12): this phone's (x,y,z) metres from the shared
-         origin. Set manually, or via GPS (tap "GPS origin" at a common spot on
-         every phone, then "GPS fill" at each position). -->
+    <!-- Co-localization (§15.12). Position = (x,y,z) metres in the shared frame.
+         Set manually, or set an ABSOLUTE lat/lon/alt origin (same on every phone)
+         and tap "GPS→pos" so each phone fills its ENU offset from that origin. -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
-        android:layout_margin="12dp"
-        android:background="#99000000"
+        android:layout_margin="10dp"
+        android:background="#aa000000"
         android:orientation="vertical"
         android:padding="6dp">
 
         <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText android:id="@+id/posX" android:layout_width="60dp"
-                android:layout_height="wrap_content" android:hint="x"
-                android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" />
-            <EditText android:id="@+id/posY" android:layout_width="60dp"
-                android:layout_height="wrap_content" android:hint="y"
-                android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" />
-            <EditText android:id="@+id/posZ" android:layout_width="60dp"
-                android:layout_height="wrap_content" android:hint="z"
-                android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" />
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <EditText android:id="@+id/posX" android:layout_width="58dp" android:layout_height="wrap_content"
+                android:hint="x" android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" android:textSize="13sp" />
+            <EditText android:id="@+id/posY" android:layout_width="58dp" android:layout_height="wrap_content"
+                android:hint="y" android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" android:textSize="13sp" />
+            <EditText android:id="@+id/posZ" android:layout_width="58dp" android:layout_height="wrap_content"
+                android:hint="z" android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" android:textSize="13sp" />
             <Button android:id="@+id/setPos" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="Set" />
+                android:layout_height="wrap_content" android:text="Set pos" />
         </LinearLayout>
 
         <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:orientation="horizontal" android:gravity="center_vertical">
-            <Button android:id="@+id/gpsOrigin" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="GPS origin" />
+            <EditText android:id="@+id/oLat" android:layout_width="120dp" android:layout_height="wrap_content"
+                android:hint="origin lat" android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:textSize="13sp" />
+            <EditText android:id="@+id/oLon" android:layout_width="120dp" android:layout_height="wrap_content"
+                android:hint="origin lon" android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:textSize="13sp" />
+            <EditText android:id="@+id/oAlt" android:layout_width="66dp" android:layout_height="wrap_content"
+                android:hint="alt" android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:textSize="13sp" />
+            <Button android:id="@+id/setOrigin" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="Set origin" />
+            <Button android:id="@+id/originHere" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="Here" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
             <Button android:id="@+id/gpsFill" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="GPS fill" />
+                android:layout_height="wrap_content" android:text="GPS→pos" />
             <TextView android:id="@+id/gpsInfo" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                android:layout_height="wrap_content" android:layout_marginStart="8dp"
                 android:textColor="#d6a14a" android:textSize="12sp" android:fontFamily="monospace"
                 android:text="gps —" />
         </LinearLayout>
