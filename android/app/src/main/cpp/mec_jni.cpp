@@ -44,7 +44,8 @@ struct Context {
     mec::KeypointProjector projector;
     mec::CameraIntrinsics intr;
     mec::UdpBeaconTransport transport;       // multi-device beacon exchange (§15.10)
-    mec::Vec3 node_pos{};                     // manual co-localization pin
+    mec::Vec3 node_pos{};                     // manual co-localization pin (position)
+    mec::Quat node_orientation{};             // absolute orientation (rotation-vector, ENU)
     uint64_t node_id = 0;
     std::vector<uint8_t> prev_y, cur_y;
     bool have_prev = false;
@@ -91,6 +92,15 @@ JNIEXPORT void JNICALL
 Java_com_mythcal_mec_MecNative_nativeSetNodePose(JNIEnv*, jobject, jlong h,
                                                  jfloat x, jfloat y, jfloat z) {
     ctx(h)->node_pos = mec::Vec3{x, y, z};
+}
+
+// Absolute device->world orientation from the rotation-vector sensor (gravity +
+// magnetic north). Shared reference across phones => aligned world frames, and
+// drift-free (§15.12).
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeSetOrientation(JNIEnv*, jobject, jlong h,
+                                                    jfloat qw, jfloat qx, jfloat qy, jfloat qz) {
+    ctx(h)->node_orientation = mec::Quat{qw, qx, qy, qz}.normalized();
 }
 
 JNIEXPORT void JNICALL
@@ -163,8 +173,9 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
 
     // Project to the world frame (node pinned at origin; orientation from IMU).
     mec::NodePose np;
-    np.position = c->node_pos; // manual co-localization pin (origin by default)
-    np.orientation = c->imu.orientation();
+    np.position = c->node_pos;            // manual co-localization pin (origin by default)
+    np.orientation = c->node_orientation; // shared absolute frame (rotation-vector); IMU
+                                          // integrator is still used for depth de-rotation
     std::array<mec::WorldKeypoint, mec::kNumKeypoints> kps{};
     for (int i = 0; i < mec::kNumKeypoints; ++i) {
         mec::Keypoint kp = obs.keypoints[mec::kMediapipe33To17[i]];

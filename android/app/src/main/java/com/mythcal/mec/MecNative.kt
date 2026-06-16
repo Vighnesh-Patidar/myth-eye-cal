@@ -12,6 +12,9 @@ object MecNative {
     /** Manual co-localization pin: this node's world position (§15.10). */
     external fun nativeSetNodePose(handle: Long, x: Float, y: Float, z: Float)
 
+    /** Absolute device->world orientation (rotation-vector sensor, ENU) (§15.12). */
+    external fun nativeSetOrientation(handle: Long, qw: Float, qx: Float, qy: Float, qz: Float)
+
     /** One IMU sample (specific force incl. gravity, rad/s gyro, dt seconds). */
     external fun nativeOnImuSample(
         handle: Long, ax: Float, ay: Float, az: Float,

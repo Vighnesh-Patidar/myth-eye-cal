@@ -990,7 +990,41 @@ pose is intentionally left limited for now. Known limitations + planned fixes:
 These are tracked for v0.3+; the multi-phone path (§15.10) is where accuracy
 comes from.
 
+### 15.12 Co-localization — shared frame via rotation-vector orientation *(feature)*
+
+Multi-phone fusion needs a common world frame (§15.10). Solved without extra
+hardware: every phone takes its **absolute orientation from the rotation-vector
+sensor** (fused accelerometer + gyroscope + magnetometer → referenced to gravity
++ magnetic north), fed to the projector as the node orientation
+(`nativeSetOrientation`, `OrientationController`). Because the reference is
+identical on every phone and the same APK shares the camera→body convention, all
+phones' world frames are **aligned by construction** — and the orientation is
+**drift-free** (this also retires the §15.11 drift item). The IMU integrator is
+still used internally for temporal-stereo de-rotation. Per-phone **position** is
+a manual pin entered on screen (x/y/z metres from a chosen origin →
+`nativeSetNodePose`), or an optional **GPS fill** (`LocationController`): every
+phone taps "GPS origin" at one shared spot, then "GPS fill" at its position,
+giving ENU metres from the common origin (matching the rotation-vector ENU
+orientation). GPS is coarse (~3-10 m) and poor indoors, so manual pins remain
+better for room-scale demos; GPS suits outdoor / large layouts.
+
+With a shared frame, the anisotropic fusion (§15.3) triangulates: each phone is
+sharp in its image plane and uncertain along its ray, so phones at different
+angles pin down each other's depth → real 3D, including for a phone with no line
+of sight (through-wall).
+
+**Field-untested:** verified to build/run and plumb on one device; the
+two-phone geometry (and any residual camera→body extrinsic offset) needs
+on-site validation with ≥2 phones. A printed fiducial marker would later give
+fully automatic co-localization (position + orientation) without manual pins.
+
 ---
+
+*Document version: 1.0.0 — first complete end-to-end release: tested C++ core,
+Android app (Camera2 + IMU + MediaPipe) on-device, UDP multi-device transport
+(§15.10), co-localization via rotation-vector orientation + position pin
+(§15.12). "Stable" hardening (CI, accuracy benchmark, Doxygen, API freeze,
+field-validated multi-phone) is post-1.0; see §12.*
 
 *Document version: 0.4.1 — UDP multi-device transport (§15.10) + viewer render
 upgrade (cylinder bones, smoothing, auto-framing); single-device pose limits

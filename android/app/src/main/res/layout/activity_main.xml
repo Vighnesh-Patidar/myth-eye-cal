@@ -20,4 +20,47 @@
         android:textSize="14sp"
         android:fontFamily="monospace"
         android:text="Starting…" />
+
+    <!-- Co-localization (§15.12): this phone's (x,y,z) metres from the shared
+         origin. Set manually, or via GPS (tap "GPS origin" at a common spot on
+         every phone, then "GPS fill" at each position). -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="12dp"
+        android:background="#99000000"
+        android:orientation="vertical"
+        android:padding="6dp">
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <EditText android:id="@+id/posX" android:layout_width="60dp"
+                android:layout_height="wrap_content" android:hint="x"
+                android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" />
+            <EditText android:id="@+id/posY" android:layout_width="60dp"
+                android:layout_height="wrap_content" android:hint="y"
+                android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" />
+            <EditText android:id="@+id/posZ" android:layout_width="60dp"
+                android:layout_height="wrap_content" android:hint="z"
+                android:inputType="numberDecimal|numberSigned"
+                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" />
+            <Button android:id="@+id/setPos" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="Set" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <Button android:id="@+id/gpsOrigin" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="GPS origin" />
+            <Button android:id="@+id/gpsFill" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="GPS fill" />
+            <TextView android:id="@+id/gpsInfo" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                android:textColor="#d6a14a" android:textSize="12sp" android:fontFamily="monospace"
+                android:text="gps —" />
+        </LinearLayout>
+    </LinearLayout>
 </FrameLayout>

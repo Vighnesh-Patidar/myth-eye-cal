@@ -11,6 +11,8 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -32,6 +34,8 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
     private lateinit var preview: SurfaceView
     private var camera: CameraController? = null
     private var imu: ImuController? = null
+    private var orient: OrientationController? = null
+    private var location: LocationController? = null
     private var pose: PoseEstimator? = null
 
     private val width = 640
@@ -59,19 +63,24 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
             override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
         })
 
-        permissionGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!permissionGranted) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 1)
+        permissionGranted = hasPerm(Manifest.permission.CAMERA)
+        if (!permissionGranted || !hasPerm(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            ActivityCompat.requestPermissions(this,
+                arrayOf(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION), 1)
         }
         maybeStart()
         ui.post(statusTick)
     }
 
+    private fun hasPerm(p: String) =
+        ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
+
     override fun onRequestPermissionsResult(rc: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(rc, perms, res)
-        permissionGranted = res.isNotEmpty() && res[0] == PackageManager.PERMISSION_GRANTED
-        if (!permissionGranted) status.text = "Camera permission denied." else maybeStart()
+        permissionGranted = hasPerm(Manifest.permission.CAMERA)
+        if (!permissionGranted) { status.text = "Camera permission denied."; return }
+        maybeStart()
+        if (hasPerm(Manifest.permission.ACCESS_FINE_LOCATION)) location?.start()
     }
 
     private fun maybeStart() {
@@ -95,7 +104,35 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
             cc.start(preview.holder.surface)
         }
         imu = ImuController(this, handle).also { it.start() }
+        orient = OrientationController(this, handle).also { it.start() }
+        location = LocationController(this).also { if (hasPerm(Manifest.permission.ACCESS_FINE_LOCATION)) it.start() }
+
+        // Manual position pin (§15.12).
+        findViewById<Button>(R.id.setPos).setOnClickListener {
+            MecNative.nativeSetNodePose(handle, field(R.id.posX), field(R.id.posY), field(R.id.posZ))
+        }
+        // GPS co-localization: capture a shared origin, then fill ENU position.
+        findViewById<Button>(R.id.gpsOrigin).setOnClickListener {
+            val info = findViewById<TextView>(R.id.gpsInfo)
+            info.text = if (location?.setOrigin() == true) "origin set (±${location?.accuracyM()?.toInt()}m)"
+                        else "no GPS fix yet"
+        }
+        findViewById<Button>(R.id.gpsFill).setOnClickListener {
+            val enu = location?.enu()
+            val info = findViewById<TextView>(R.id.gpsInfo)
+            if (enu == null) { info.text = if (location?.hasOrigin() != true) "set origin first" else "no GPS fix" }
+            else {
+                findViewById<EditText>(R.id.posX).setText(String.format("%.2f", enu[0]))
+                findViewById<EditText>(R.id.posY).setText(String.format("%.2f", enu[1]))
+                findViewById<EditText>(R.id.posZ).setText(String.format("%.2f", enu[2]))
+                MecNative.nativeSetNodePose(handle, enu[0], enu[1], enu[2])
+                info.text = "gps pos set (±${location?.accuracyM()?.toInt()}m)"
+            }
+        }
     }
+
+    private fun field(id: Int): Float =
+        findViewById<EditText>(id).text.toString().toFloatOrNull() ?: 0f
 
     // Camera background thread.
     override fun onFrame(yPlane: ByteArray, bitmap: Bitmap, w: Int, h: Int, tsNs: Long) {
@@ -127,7 +164,7 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
     override fun onDestroy() {
         super.onDestroy()
         ui.removeCallbacks(statusTick)
-        camera?.stop(); imu?.stop(); pose?.close()
+        camera?.stop(); imu?.stop(); orient?.stop(); location?.stop(); pose?.close()
         if (handle != 0L) { MecNative.nativeShutdown(handle); handle = 0 }
         multicastLock?.let { if (it.isHeld) it.release() }; multicastLock = null
     }
