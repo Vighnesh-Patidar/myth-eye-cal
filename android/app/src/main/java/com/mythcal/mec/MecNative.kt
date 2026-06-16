@@ -33,5 +33,9 @@ object MecNative {
     external fun nativePoll(handle: Long)
     external fun nativeServerPort(handle: Long): Int
     external fun nativeClientCount(handle: Long): Int
+    /** Distinct neighbour phones heard over UDP recently (§15.10). */
+    external fun nativeNeighborCount(handle: Long): Int
+    /** Observers fused into the latest pose (local + neighbours). */
+    external fun nativeObserverCount(handle: Long): Int
     external fun nativeShutdown(handle: Long)
 }

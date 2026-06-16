@@ -23,6 +23,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <array>
+#include <unordered_map>
 #include <vector>
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "mec_jni", __VA_ARGS__)
@@ -51,6 +52,8 @@ struct Context {
     bool have_prev = false;
     uint32_t frame_id = 0;
     double last_ts_s = 0.0;
+    std::unordered_map<uint64_t, double> neighbor_seen; // sender -> last-heard time
+    int last_neighbor_count = 0;
 
     Context(int w, int h) : width(w), height(h), render(&server), depth(w, h) {}
 };
@@ -133,6 +136,20 @@ Java_com_mythcal_mec_MecNative_nativeClientCount(JNIEnv*, jobject, jlong h) {
     return static_cast<jint>(ctx(h)->server.client_count());
 }
 
+// Distinct neighbour phones heard over UDP in the last ~2s.
+JNIEXPORT jint JNICALL
+Java_com_mythcal_mec_MecNative_nativeNeighborCount(JNIEnv*, jobject, jlong h) {
+    return ctx(h)->last_neighbor_count;
+}
+
+// Observers that contributed to the latest fused pose (local + neighbours).
+JNIEXPORT jint JNICALL
+Java_com_mythcal_mec_MecNative_nativeObserverCount(JNIEnv*, jobject, jlong h) {
+    Context* c = ctx(h);
+    auto* pose = c->world.get<mec::PoseStateComponent>(c->self);
+    return pose ? static_cast<jint>(pose->observer_count) : 0;
+}
+
 // landmarks: float[count*4] = (x_norm, y_norm, z, visibility) per MediaPipe.
 JNIEXPORT jstring JNICALL
 Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
@@ -204,7 +221,15 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
         usv.spx = rx.spx; usv.spy = rx.spy; usv.spz = rx.spz;
         usv.payload = rx.payload;
         c->world.user_neighbours.entries.push_back(usv);
+        c->neighbor_seen[rx.sender] = ts;
     }
+    // Count distinct neighbour phones heard in the last 2s.
+    int nc = 0;
+    for (auto it = c->neighbor_seen.begin(); it != c->neighbor_seen.end();) {
+        if (ts - it->second > 2.0) it = c->neighbor_seen.erase(it);
+        else { ++nc; ++it; }
+    }
+    c->last_neighbor_count = nc;
     c->world.set_now(ts);
     c->server.poll_events(0);
     double dt = ts - c->last_ts_s;

@@ -112,7 +112,10 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
 
         // Manual position pin (§15.12).
         findViewById<Button>(R.id.setPos).setOnClickListener {
-            MecNative.nativeSetNodePose(handle, field(R.id.posX), field(R.id.posY), field(R.id.posZ))
+            val x = field(R.id.posX); val y = field(R.id.posY); val z = field(R.id.posZ)
+            MecNative.nativeSetNodePose(handle, x, y, z)
+            currentFocus?.clearFocus()
+            toast("position set: (%.2f, %.2f, %.2f)".format(x, y, z))
         }
         // Absolute GPS origin (set the SAME lat/lon/alt on every phone), then
         // each phone fills its ENU offset from it.
@@ -142,8 +145,8 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
         }
     }
 
-    private fun field(id: Int): Float = findViewById<EditText>(id).text.toString().toFloatOrNull() ?: 0f
-    private fun dfield(id: Int): Double = findViewById<EditText>(id).text.toString().toDoubleOrNull() ?: 0.0
+    private fun field(id: Int): Float = findViewById<EditText>(id).text.toString().trim().toFloatOrNull() ?: 0f
+    private fun dfield(id: Int): Double = findViewById<EditText>(id).text.toString().trim().toDoubleOrNull() ?: 0.0
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_SHORT).show()
 
     // Camera background thread.
@@ -165,6 +168,8 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
                     append("Myth-Eye-Cal — live\n")
                     append("frames: ${frames.get()}\n")
                     append("pose detected: ${if (detected) "YES" else "no (stand in view)"}\n")
+                    append("neighbors: ${MecNative.nativeNeighborCount(handle)}  " +
+                        "fused observers: ${MecNative.nativeObserverCount(handle)}\n")
                     append("viewers: $clients\n")
                     append("ws://$ip:$port/pose")
                 }
