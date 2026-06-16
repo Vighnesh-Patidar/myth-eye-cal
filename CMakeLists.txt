@@ -25,16 +25,24 @@ add_library(mec_core
 )
 target_include_directories(mec_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# Mock MithAtomas runtime (header-only stand-in for the real submodule, §15.6).
+# Only ECS targets depend on it; mec_core stays dependency-free.
+add_library(mith_mock INTERFACE)
+target_include_directories(mith_mock INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/mock)
+
 # Simulated LOS node demo (no camera): generates synthetic observations,
 # fuses them, and prints serialised pose frames (§6.3 format).
 add_executable(sim_pose_demo examples/sim_pose_demo/main.cpp)
 target_link_libraries(sim_pose_demo PRIVATE mec_core)
 
 # Render server demo: fusion sim served live over WebSocket to the browser.
-add_executable(render_server_demo examples/render_server_demo/main.cpp)
-target_link_libraries(render_server_demo PRIVATE mec_core)
 find_package(Threads REQUIRED)
-target_link_libraries(render_server_demo PRIVATE Threads::Threads)
+add_executable(render_server_demo examples/render_server_demo/main.cpp)
+target_link_libraries(render_server_demo PRIVATE mec_core Threads::Threads)
+
+# ECS pipeline demo: §9 systems through the mock MithAtomas scheduler.
+add_executable(ecs_pipeline_demo examples/ecs_pipeline_demo/main.cpp)
+target_link_libraries(ecs_pipeline_demo PRIVATE mec_core mith_mock Threads::Threads)
 
 # --- Tests -----------------------------------------------------------------
 enable_testing()
@@ -48,5 +56,11 @@ endfunction()
 mec_add_test(test_multi_observer_fusion tests/unit/test_multi_observer_fusion.cpp)
 mec_add_test(test_kalman_tracker        tests/unit/test_kalman_tracker.cpp)
 mec_add_test(test_keypoint_projector    tests/unit/test_keypoint_projector.cpp)
+mec_add_test(test_los_detector          tests/unit/test_los_detector.cpp)
 mec_add_test(test_fusion_pipeline       tests/integration/test_fusion_pipeline.cpp)
 mec_add_test(test_websocket_server      tests/integration/test_websocket_server.cpp)
+
+# ECS test additionally needs the mock MithAtomas runtime.
+add_executable(test_ecs_pipeline tests/integration/test_ecs_pipeline.cpp)
+target_link_libraries(test_ecs_pipeline PRIVATE mec_core mith_mock)
+add_test(NAME test_ecs_pipeline COMMAND test_ecs_pipeline)
