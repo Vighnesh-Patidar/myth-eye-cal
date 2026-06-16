@@ -1,6 +1,6 @@
 # Myth-Eye-Cal — Status & v0.3 Hand-off
 
-**As of:** 2026-06-16 · **Design doc:** [ARCHITECTURE.md](ARCHITECTURE.md) v0.3.5
+**As of:** 2026-06-16 · **Design doc:** [ARCHITECTURE.md](ARCHITECTURE.md) v1.0.1
 
 This is the map for the next session. It records what is **built and tested on
 Linux**, what is **blocked on the Android/NDK toolchain or the real
@@ -58,7 +58,7 @@ shell, or just trust `test_websocket_server`'s in-process loopback.)*
 | Debug APK build | **DONE — builds on Linux toolchain (26 MB)** | v0.3 |
 | On-device run (deploy) | pending — needs a phone (VirtualBox USB passthrough or copy APK) | v0.3 |
 | Multi-device transport | **DONE (stopgap) — `UdpBeaconTransport`** over Wi-Fi UDP (§15.10); starts on-device | v0.3 |
-| Real `mith::` runtime | `mith-atomas` submodule (mock + UDP stopgap stand in — `mock/mith/`, `transport/`) | all |
+| Real `mith::` comms (`MithRuntime`) | **DONE — compiled + verified** (§15.13): Linux two-node multicast discovery + Android arm64 NDK cross-compile (libmith.a → libmec_jni.so). Behind `MEC_USE_MITH`; UDP stays default | v0.3 |
 | Co-localization (shared world frame) | **OPEN** — multi-phone fusion incoherent without it (§15.10); manual position pin added, orientation alignment unsolved | v0.3 |
 | Native OpenGL ES renderer | optional (browser path works; viewer upgraded — cylinder bones/smoothing) | v0.2/v0.3 |
 | Multi-phone + latency runs | needs ≥2 phones on one Wi-Fi + co-localization | v0.3 |
@@ -101,8 +101,12 @@ constant-velocity ambiguity).
 
 ## Suggested v0.3 next steps
 
-1. **Vendor `mith-atomas`** and replace `mock/mith/` — the `mith::` names are
-   the only coupling; `mec_core` is already free of the mock.
+1. ~~**Vendor `mith-atomas`**~~ **DONE** (§15.13) — submodule vendored at
+   `third_party/mith-atomas`; `MithRuntime` backs the comms channel behind
+   `MEC_USE_MITH` (Linux + Android arm64 verified). The `mock/mith/` World now
+   *permanently* hosts the multi-observation fusion ECS by design (mith is
+   N=1-per-World); it is no longer a transport stand-in. **Next:** flip
+   `MEC_USE_MITH=ON` as the default once two-phone field validation passes.
 2. **Android shell**: NDK build of `mec_core` as `.so`, JNI bridge, `Camera2` +
    `SensorManager` wiring into `Frame`/`IMUFrame`, MediaPipe behind
    `PoseEstimatorBackend`.

@@ -16,7 +16,14 @@ android {
 
         ndk { abiFilters += listOf("arm64-v8a") } // most phones; add others as needed
         externalNativeBuild {
-            cmake { cppFlags += "-std=c++17" }
+            cmake {
+                cppFlags += "-std=c++17"
+                // Real mith-atomas comms (§15.13). Multicast inbound needs the
+                // Kotlin MulticastLock (already held in MainActivity).
+                arguments += listOf("-DMEC_USE_MITH=ON",
+                                    "-DMITH_BUILD_TESTS=OFF",
+                                    "-DMITH_BUILD_EXAMPLES=OFF")
+            }
         }
     }
 

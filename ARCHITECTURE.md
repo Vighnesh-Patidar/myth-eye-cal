@@ -1029,24 +1029,37 @@ observation **fusion** ECS (aggregator buffers, Kalman bank, fused pose) stays o
 the lightweight `mock/mith` World/scheduler. The mock is no longer a stand-in for
 transport — it's our app's fusion runtime; mith is the coordination substrate.
 
-**Status:** written against the documented mith API and wired behind the CMake
-option `MEC_USE_MITH` (default OFF → UDP stopgap, which builds + runs on-device
-today). Enabling needs the submodule at `third_party/mith-atomas`; not yet
-compiled here. On Android the existing Kotlin `MulticastLock` is required for
-inbound multicast delivery.
+**Status:** wired behind the CMake option `MEC_USE_MITH` (default OFF → UDP
+stopgap). The submodule is vendored at `third_party/mith-atomas` (v1.0.0-rc1)
+and the integration is **compiled and verified**:
+- **Linux:** `MithRuntime` compiled + linked against the real headers with zero
+  source corrections; the `mith_node_demo` two-node test shows nodes discovering
+  each other over multicast (`neighbours=1`), CUSTOM payloads delivered, and the
+  synced clock advancing.
+- **Android (arm64-v8a):** the NDK cross-compiles `mith-atomas` into `libmith.a`
+  and statically links it into `libmec_jni.so` (debug APK builds, ~7 MB native
+  lib with `mec::MithRuntime` + `mith::World`/`BeaconSystem` symbols present).
+
+On Android the existing Kotlin `MulticastLock` is required for inbound multicast
+delivery.
 
 With a shared frame, the anisotropic fusion (§15.3) triangulates: each phone is
 sharp in its image plane and uncertain along its ray, so phones at different
 angles pin down each other's depth → real 3D, including for a phone with no line
 of sight (through-wall).
 
-**Field-untested:** verified to build/run and plumb on one device; the
-two-phone geometry (and any residual camera→body extrinsic offset) needs
-on-site validation with ≥2 phones. A printed fiducial marker would later give
-fully automatic co-localization (position + orientation) without manual pins.
+**Field-untested:** the comms substrate is verified (Linux two-node discovery +
+Android cross-compile/link), but the two-phone *geometry* (and any residual
+camera→body extrinsic offset) still needs on-site validation with ≥2 physical
+phones on one Wi-Fi. A printed fiducial marker would later give fully automatic
+co-localization (position + orientation) without manual pins.
 
 ---
 
+*Document version: 1.0.1 — §15.13 real mith-atomas comms integration compiled +
+verified: Linux two-node multicast discovery (`mith_node_demo`) and Android
+arm64 NDK cross-compile (libmith.a statically linked into libmec_jni.so). Behind
+`MEC_USE_MITH` (default OFF → UDP stopgap)*
 *Document version: 1.0.0 — first complete end-to-end release: tested C++ core,
 Android app (Camera2 + IMU + MediaPipe) on-device, UDP multi-device transport
 (§15.10), co-localization via rotation-vector orientation + position pin

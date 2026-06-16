@@ -48,6 +48,19 @@ target_link_libraries(render_server_demo PRIVATE mec_core Threads::Threads)
 add_executable(ecs_pipeline_demo examples/ecs_pipeline_demo/main.cpp)
 target_link_libraries(ecs_pipeline_demo PRIVATE mec_core mith_mock Threads::Threads)
 
+# Real mith-atomas comms (§15.13). OFF by default; turn on once the submodule
+# is present at third_party/mith-atomas:
+#   cmake -S . -B build-mith -DMEC_USE_MITH=ON -DMITH_BUILD_TESTS=OFF -DMITH_BUILD_EXAMPLES=OFF
+option(MEC_USE_MITH "Build the real mith-atomas integration (MithRuntime)" OFF)
+if(MEC_USE_MITH)
+    add_subdirectory(third_party/mith-atomas ${CMAKE_BINARY_DIR}/mith-atomas)
+    add_executable(mith_node_demo
+        examples/mith_node_demo/main.cpp
+        src/transport/mith_runtime.cpp)
+    target_link_libraries(mith_node_demo PRIVATE mec_core mith::mith Threads::Threads)
+    target_compile_definitions(mith_node_demo PRIVATE MEC_USE_MITH=1)
+endif()
+
 # --- Tests -----------------------------------------------------------------
 enable_testing()
 
