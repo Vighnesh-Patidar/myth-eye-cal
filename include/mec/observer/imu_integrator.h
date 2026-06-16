@@ -40,6 +40,7 @@ public:
 private:
     IMUConfig cfg_;
     Quat q_{1.0f, 0.0f, 0.0f, 0.0f};
+    Quat prev_consumed_q_{1.0f, 0.0f, 0.0f, 0.0f}; // orientation at last consume()
     Vec3 v_{};
     Vec3 p_{};
 };

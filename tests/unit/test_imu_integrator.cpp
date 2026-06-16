@@ -22,6 +22,12 @@ int main() {
         const Vec3 r = rotate(q, Vec3{1, 0, 0});
         CHECK_NEAR(r.x, 0.0, 1e-2);
         CHECK_NEAR(r.y, 1.0, 1e-2);
+
+        // consume() reports the inter-frame rotation (§15.7): from identity to
+        // the current 90deg yaw -> dq ~ 90deg about Z.
+        const IMUFrame f = imu.consume(1.0f);
+        CHECK_NEAR(f.dqw, std::cos(kPi / 4.0), 1e-2);
+        CHECK_NEAR(f.dqz, std::sin(kPi / 4.0), 1e-2);
     }
 
     // 2) Stationary: gravity fully rejected -> ~zero baseline.

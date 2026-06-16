@@ -27,6 +27,10 @@ struct FrameMeta {
 struct IMUFrame {
     float baseline_m = 0.0f;                          // distance moved since last frame
     float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f; // orientation at capture
+    // Inter-frame rotation since the previous frame, body frame: maps a
+    // direction in the current frame to the previous frame (§15.7 de-rotation).
+    // Identity by default (no rotation / not provided).
+    float dqw = 1.0f, dqx = 0.0f, dqy = 0.0f, dqz = 0.0f;
     float timestamp_s = 0.0f;
 };
 

@@ -32,8 +32,15 @@ IMUFrame IMUIntegrator::consume(float timestamp_s) {
     f.baseline_m = norm(p_);
     const Quat q = q_.normalized();
     f.qw = q.w; f.qx = q.x; f.qy = q.y; f.qz = q.z;
+
+    // Inter-frame rotation since the last consume(), mapping current-frame
+    // directions to the previous frame: dq = q_prev^{-1} ⊗ q_curr (§15.7).
+    const Quat dq = mul(conj(prev_consumed_q_), q).normalized();
+    f.dqw = dq.w; f.dqx = dq.x; f.dqy = dq.y; f.dqz = dq.z;
     f.timestamp_s = timestamp_s;
+
     p_ = Vec3{}; // displacement resets each camera frame; velocity + orientation persist
+    prev_consumed_q_ = q;
     return f;
 }
 

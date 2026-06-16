@@ -18,7 +18,9 @@
 // parallax of STATIC points. A moving subject and inter-frame camera rotation
 // both contaminate the disparity; see §15.7 for the planned correction.
 
+#include "mec/math.h"
 #include "mec/observer/frame.h"
+#include "mec/observer/keypoint_projector.h" // CameraIntrinsics
 #include "mec/observer/lucas_kanade.h"
 #include "mec/types.h"
 
@@ -36,14 +38,20 @@ public:
         float min_baseline_m = 0.005f;
         float max_baseline_m = 0.500f;
         float min_disparity_px = 0.5f;
+        // Fixed camera->body rotation (§4.4). Used to express the IMU's
+        // body-frame inter-frame rotation in the camera frame for de-rotation.
+        Quat cam_to_body{};           // identity by default
     };
 
     TemporalStereoDepth(int max_w, int max_h);
     TemporalStereoDepth(int max_w, int max_h, Config cfg);
 
-    // Updates obs.keypoints[i].depth_hint in place from the prev->curr flow.
+    // Updates obs.keypoints[i].depth_hint in place. The measured LK flow is
+    // de-rotated using imu's inter-frame rotation (§15.7) so only the
+    // translational (depth-bearing) disparity drives the depth estimate.
+    // Needs full intrinsics (principal point) for the rotation homography.
     void resolve(PoseObservation& obs, const Frame& prev, const Frame& curr,
-                 const IMUFrame& imu, float focal_length_px, float lens_prior_m);
+                 const IMUFrame& imu, const CameraIntrinsics& intr, float lens_prior_m);
 
     // Single-measurement inverse-variance fusion (a static Kalman update).
     static float kalman_fuse(float prior, float meas,

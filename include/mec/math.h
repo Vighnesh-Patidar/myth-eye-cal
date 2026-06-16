@@ -53,6 +53,9 @@ inline Vec3 rotate(const Quat& q, const Vec3& v) {
     return v + t * q.w + cross(qv, t);
 }
 
+// Quaternion conjugate (= inverse for a unit quaternion).
+inline Quat conj(const Quat& q) { return {q.w, -q.x, -q.y, -q.z}; }
+
 // Hamilton quaternion product a ⊗ b.
 inline Quat mul(const Quat& a, const Quat& b) {
     return {a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
