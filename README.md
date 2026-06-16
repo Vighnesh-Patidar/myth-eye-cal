@@ -18,11 +18,14 @@ Implemented:
 - `KeypointProjector` — image + depth → world-frame projection (§4.4)
 - Core wire types incl. the 128-byte `KeypointFramePayload` (§4.5)
 - Synthetic LOS-node simulator + `sim_pose_demo` (§12)
+- `WebSocketRenderServer` — hand-rolled RFC 6455 server (§6, §15.5)
 - `myth-eye-cal-viewer.html` — Three.js skeletal renderer (§6.4)
-- Unit + integration tests (fusion math, Kalman, projector, full pipeline)
+- `render_server_demo` — live fusion sim served over WebSocket to the browser
+- Unit + integration tests (fusion math, Kalman, projector, full pipeline,
+  WebSocket handshake + loopback broadcast)
 
 Deferred (need the `mith-atomas` submodule / Android): the ECS `System`
-classes (§9), MediaPipe pose, temporal-stereo depth, the uWebSockets server.
+classes (§9), MediaPipe pose, temporal-stereo depth.
 
 ## Build & test (Linux)
 
@@ -42,15 +45,20 @@ ctest --test-dir build --output-on-failure
 Each line is a `pose_frame` JSON (ARCHITECTURE.md §6.3): synthetic observers
 of one moving person are fused and Kalman-smoothed into a single pose.
 
-## View it
+## Live render over WebSocket
 
-Open `viewer/myth-eye-cal-viewer.html` in any browser. With no WebSocket
-server reachable it shows a synthetic walk (demo mode); point the URL box at a
-live `ws://<host>:8080/pose` endpoint once the render server lands.
+```sh
+# args: <port=8080> <num_observers=3> <seconds=0 (0 = forever)>
+./build/render_server_demo 8080 3
+```
 
-To pipe the demo into the viewer today, bridge stdout to a WebSocket with any
-small relay (e.g. `websocat -s 8080`); the native uWebSockets server is the
-next v0.1 task.
+Then open `viewer/myth-eye-cal-viewer.html` in any browser and point the URL
+box at `ws://<host>:8080/pose` — the fused pose streams in at 60 Hz. With no
+server reachable the viewer falls back to a synthetic walk (demo mode).
+
+The server is a dependency-free RFC 6455 implementation
+(`websocket_render_server.{h,cpp}`); see ARCHITECTURE.md §15.5 for why
+uWebSockets was not vendored.
 
 ## Layout
 

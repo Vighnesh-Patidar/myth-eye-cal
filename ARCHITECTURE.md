@@ -656,7 +656,7 @@ myth-eye-cal/
 | MediaPipe (Android AAR) | pose estimation | Android only |
 | Android SensorManager | IMU data at 200Hz (accelerometer + gyro) | Android only, no library |
 | Three.js | browser skeletal renderer | CDN |
-| uWebSockets | WebSocket server (C++) | vendored |
+| ~~uWebSockets~~ → hand-rolled | WebSocket server (C++) | none (§15.5) |
 | nlohmann/json | pose frame serialisation | vendored header |
 
 No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framework. Depth is pure geometry — Lucas-Kanade optical flow (hand-rolled C++17 NEON) + IMU dead reckoning + lens focus prior. GPU inference is handled transparently by MediaPipe's Tasks API GPU delegate.
@@ -666,12 +666,14 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
 ## 12. Roadmap
 
 ### v0.1 — Fusion Core (no camera)
-- [ ] `KeypointAggregatorSystem` + `PoseFusionSystem` + `KalmanTracker`
-- [ ] Simulated LOS node (generates synthetic keypoint observations)
-- [ ] `myth-eye-cal-viewer.html` Three.js renderer
-- [ ] WebSocket render server
-- [ ] Unit tests: fusion math, Kalman tracker, projector
-- [ ] Integration test: 3 simulated LOS nodes → fused pose → browser render
+- [x] `MultiObserverFusion` + `KeypointKalmanTracker` (standalone classes; ECS
+      `System` wrappers deferred to MithAtomas integration — see §9)
+- [x] Simulated LOS node (`sim/synthetic_pose.h`, `sim_pose_demo`)
+- [x] `myth-eye-cal-viewer.html` Three.js renderer
+- [x] WebSocket render server (hand-rolled, §15.5; `render_server_demo`)
+- [x] Unit tests: fusion math, Kalman tracker, projector
+- [x] Integration test: 3 simulated LOS nodes → fused pose (2.5cm mean error),
+      live WebSocket → browser render path verified
 
 ### v0.2 — Observer Pipeline
 - [ ] MediaPipe Pose integration (Android, Tasks API)
@@ -781,6 +783,20 @@ minimum an along-ray vs lateral σ split) and fuse with the full information
 form `Σ Σᵢ⁻¹` / `Σ Σᵢ⁻¹ xᵢ`. The `WorldKeypoint` API and `MultiObserverFusion`
 are documented as the extension points. Tracked as a v1.0 accuracy item.
 
+### 15.5 Render server: uWebSockets replaced by a hand-rolled RFC 6455 server *(deviation)*
+
+§11 listed vendored **uWebSockets** (which pulls uSockets + zlib) for the
+render path. For v0.1 the render server only does a handshake and broadcasts
+small JSON text frames to a handful of LAN browser clients — server→client
+only, no TLS, no per-message-deflate. A ~300-line dependency-free `poll()`
+server (`websocket_render_server.{h,cpp}`) covers that and keeps the project
+consistent with §11's "no heavy deps" / "hand-rolled" ethos and testable
+offline (loopback integration test). The public interface
+(`start`/`poll_events`/`broadcast`/`stop`) is deliberately small so uWebSockets
+can be swapped back in if TLS or high client counts are later required.
+Likewise `nlohmann/json` is avoided — the §6.3 frame is emitted by the
+header-only `pose_serialiser.h`.
+
 ### 15.4 33→17 keypoint mapping was unspecified *(minor, fixed)*
 
 The doc defaults the estimator to MediaPipe's 33 landmarks (§4.2) but fuses and
@@ -791,6 +807,8 @@ consequence of the strict 17-slot skeleton: only one ankle survives the cut
 
 ---
 
+*Document version: 0.3.2 — v0.1 fusion core + hand-rolled WebSocket render
+server implemented (§15.5); v0.1 roadmap complete pending MithAtomas ECS wrappers*
 *Document version: 0.3.1 — Design review (§15): 128-byte payload fix, double
 timestamps, anisotropic-fusion upgrade noted, 33→17 mapping specified*
 *Document version: 0.3.0 — Thundercam dependency removed; Camera2 direct capture; self-contained*
