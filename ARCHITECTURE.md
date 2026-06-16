@@ -687,8 +687,11 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
 - [ ] Android JNI bridge (fusion core + MithAtomas as .so via NDK) — needs Android
 
 ### v0.3 — Full System
-- [ ] End-to-end: phone camera → fused pose → browser render
-- [ ] Multi-phone test (minimum 2 LOS + 1 non-LOS)
+- [~] Android shell scaffolded; **debug APK builds** (NDK `libmec_jni.so`
+      bundling the full tested core + JNI bridge; Kotlin Camera2 + SensorManager
+      + MediaPipe) — see `android/` and §15.9. On-device run pending deploy.
+- [ ] End-to-end on-device: phone camera → fused pose → browser render
+- [ ] Multi-phone test (minimum 2 LOS + 1 non-LOS) — needs real mith-atomas
 - [ ] Latency measurement and logging
 - [ ] LOS state transition testing (phone moves behind wall mid-session)
 
@@ -923,8 +926,32 @@ velocity baseline). Two notes:
   ambiguity — tracked as a v1.0 item. The SensorManager 200 Hz sampling source
   is the only Android-specific piece still deferred; the math here is complete.
 
+### 15.9 Android port — scaffolded and building *(milestone)*
+
+The `android/` module wires the device shell to the tested core: a JNI bridge
+(`cpp/mec_jni.cpp`) whose NDK `CMakeLists.txt` compiles the seven portable
+`mec_core` sources + the bridge into `libmec_jni.so` (arm64-v8a), and a Kotlin
+shell — `CameraController` (Camera2 YUV_420_888), `ImuController`
+(SensorManager → `IMUIntegrator`), `PoseEstimator` (MediaPipe Pose Landmarker),
+`MainActivity` (orchestration + device IP for the browser). The **debug APK
+builds** (verified on Linux with a home-dir JDK17/SDK/NDK toolchain): the native
+`.so` and all Kotlin compile clean; the MediaPipe model is bundled.
+
+On-device data flow (single device): Camera2 → MediaPipe (Kotlin) →
+`nativeOnFrame` → temporal-stereo depth + projection + fusion + Kalman →
+WebSocket render to the browser; SensorManager → `nativeOnImuSample` at ~200Hz.
+
+Bring-up shortcuts to revisit (tracked in `android/README.md`): pose runs on a
+grayscale bitmap; `lensPriorM` is constant (wire `LENS_FOCUS_DISTANCE`); the
+node is pinned at the origin; `mith::` is still the mock, so **multi-device
+fusion needs the real mith-atomas transport**. On-device run is pending a deploy
+(VirtualBox USB passthrough or copying the APK to the host).
+
 ---
 
+*Document version: 0.4.0 — Android port scaffolded; debug APK builds (NDK
+libmec_jni.so + Camera2/IMU/MediaPipe Kotlin shell, §15.9). On-device run +
+real mith-atomas remain*
 *Document version: 0.3.9 — §15.3 anisotropic covariance fusion (information form,
 view-ray reconstruction in the aggregator); end-to-end ~2.0cm from 12cm-depth-
 noise observers. All §15 accuracy items now addressed except v1.0 refinements*

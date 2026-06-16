@@ -49,15 +49,17 @@ shell, or just trust `test_websocket_server`'s in-process loopback.)*
 
 ## Blocked — needs Android/NDK or the real submodule
 
-| Item | Blocker | Roadmap |
+| Item | Status | Roadmap |
 |---|---|---|
-| MediaPipe Pose Landmarker / MoveNet | Android AAR + GPU delegate | v0.2 |
-| `Camera2` capture + `FrameMetaBuilder` | Android Camera2 API | v0.2 |
-| `SensorManager` 200 Hz sampling | Android sensors (math is done — feeds `IMUIntegrator`) | v0.2 |
-| Android JNI bridge / `.so` via NDK | Android NDK | v0.2 |
-| Real `mith::` runtime | `mith-atomas` submodule (mock stands in — `mock/mith/`) | all |
-| Native OpenGL ES renderer | Android (browser path works today) | v0.2/v0.3 |
-| End-to-end multi-phone + latency runs | physical devices | v0.3 |
+| Android JNI bridge / `.so` via NDK | **DONE — `libmec_jni.so` builds** (`android/`, §15.9) | v0.2 |
+| `Camera2` capture + Kotlin shell | **DONE — compiles** (`CameraController`, bring-up shortcuts noted) | v0.2 |
+| `SensorManager` 200 Hz sampling | **DONE — compiles** (`ImuController` → `IMUIntegrator`) | v0.2 |
+| MediaPipe Pose Landmarker | **DONE — compiles + model bundled** (`PoseEstimator`) | v0.2 |
+| Debug APK build | **DONE — builds on Linux toolchain (26 MB)** | v0.3 |
+| On-device run (deploy) | pending — needs a phone (VirtualBox USB passthrough or copy APK) | v0.3 |
+| Real `mith::` runtime | `mith-atomas` submodule (mock stands in — `mock/mith/`) — needed for multi-device | all |
+| Native OpenGL ES renderer | optional (browser path works today) | v0.2/v0.3 |
+| Multi-phone + latency runs | needs ≥3 physical devices + real mith-atomas | v0.3 |
 
 The interfaces these plug into already exist and are exercised by tests:
 `PoseEstimatorBackend` (pose), `Frame`/`IMUFrame` (capture/IMU),
