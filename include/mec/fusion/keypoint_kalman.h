@@ -19,7 +19,9 @@ class KeypointKalmanTracker {
 public:
     // Process noise as a max-acceleration std-dev (m/s^2), tuned for human
     // movement (~5 m/s^2 per §5.3). Higher -> filter trusts measurements more.
-    explicit KeypointKalmanTracker(float process_accel_std = 5.0f);
+    // Not explicit: also serves as the default constructor (e.g. std::array
+    // value-init in KalmanBankComponent).
+    KeypointKalmanTracker(float process_accel_std = 5.0f);
 
     void update(const WorldKeypoint& fused_obs);
 
