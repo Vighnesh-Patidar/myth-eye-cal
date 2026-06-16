@@ -22,6 +22,21 @@ void IMUIntegrator::integrate(const Vec3& accel_body, const Vec3& gyro_body, flo
     Vec3 a_world = rotate(q_, accel_body);
     a_world.z -= cfg_.gravity;
 
+    // Zero-velocity update (§15.8): when specific force ~= g and there is no
+    // rotation for several consecutive samples, treat the device as at rest
+    // and zero the velocity so accelerometer bias cannot drift it. NOTE: an
+    // accelerometer cannot distinguish rest from constant velocity (both give
+    // |f|=g), so this also fires during rare perfectly-constant-velocity motion
+    // — benign here (deliberate translation has jerk; rest correctly wants v=0).
+    const bool still = std::fabs(norm(accel_body) - cfg_.gravity) < cfg_.accel_still_tol &&
+                       norm(gyro_body) < cfg_.gyro_still_tol;
+    still_count_ = still ? still_count_ + 1 : 0;
+    stationary_ = still_count_ >= cfg_.still_samples;
+    if (cfg_.enable_zupt && stationary_) {
+        v_ = Vec3{};        // ZUPT
+        a_world = Vec3{};   // confidently at rest: ignore the (biased) specific force
+    }
+
     // Kinematic update (exact for constant acceleration over dt).
     p_ = p_ + v_ * dt + a_world * (0.5f * dt * dt);
     v_ = v_ + a_world * dt;
@@ -55,6 +70,8 @@ IMUFrame IMUIntegrator::consume(float timestamp_s) {
 void IMUIntegrator::reset() {
     v_ = Vec3{};
     p_ = Vec3{};
+    still_count_ = 0;
+    stationary_ = false;
 }
 
 } // namespace mec

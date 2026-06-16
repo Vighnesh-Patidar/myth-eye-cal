@@ -39,8 +39,11 @@ int main() {
     }
 
     // 3) Accelerate then coast: displacement resets each frame, velocity carries.
+    //    ZUPT off here: a coasting (constant-velocity) device has |f|=g, which
+    //    ZUPT cannot distinguish from rest (§15.8) and would wrongly zero v.
     {
-        IMUIntegrator imu;
+        IMUConfig cfg; cfg.enable_zupt = false;
+        IMUIntegrator imu(cfg);
         // 2 m/s^2 along +X for 0.5s -> v=1 m/s, displacement 0.25m.
         for (int i = 0; i < 100; ++i) imu.integrate(Vec3{2.0f, 0, 9.81f}, Vec3{0, 0, 0}, dt);
         const IMUFrame fa = imu.consume(0.5f);
@@ -58,12 +61,40 @@ int main() {
 
     // 4) reset() zeroes velocity + displacement (orientation kept).
     {
-        IMUIntegrator imu;
+        IMUConfig cfg; cfg.enable_zupt = false;
+        IMUIntegrator imu(cfg);
         for (int i = 0; i < 50; ++i) imu.integrate(Vec3{3.0f, 0, 9.81f}, Vec3{0, 0, 0}, dt);
         CHECK(imu.velocity().x > 0.0f);
         imu.reset();
         CHECK_NEAR(imu.velocity().x, 0.0, 1e-6);
         CHECK_NEAR(imu.displacement().x, 0.0, 1e-6);
+    }
+
+    // 5) ZUPT (§15.8): a biased accelerometer at rest must NOT drift velocity.
+    {
+        const Vec3 biased{0.1f, 0.0f, 9.81f}; // 0.1 m/s^2 bias, |f| ~= g
+        IMUIntegrator on;                      // ZUPT enabled (default)
+        IMUConfig off_cfg; off_cfg.enable_zupt = false;
+        IMUIntegrator off(off_cfg);
+        for (int i = 0; i < 200; ++i) {        // 1s at rest with bias
+            on.integrate(biased, Vec3{0, 0, 0}, dt);
+            off.integrate(biased, Vec3{0, 0, 0}, dt);
+        }
+        // With ZUPT: detected stationary, velocity pinned ~0, baseline ~0.
+        CHECK(on.is_stationary());
+        CHECK(std::fabs(on.velocity().x) < 1e-2f);
+        CHECK(on.consume(1.0f).baseline_m < 2e-3f);
+        // Without ZUPT: the 0.1 m/s^2 bias integrates to ~0.1 m/s and ~0.05 m.
+        CHECK_NEAR(off.velocity().x, 0.1, 5e-3);
+        CHECK_NEAR(off.consume(1.0f).baseline_m, 0.05, 5e-3);
+    }
+
+    // 6) ZUPT must not fire during genuine acceleration.
+    {
+        IMUIntegrator imu; // ZUPT default-on
+        for (int i = 0; i < 50; ++i) imu.integrate(Vec3{2.0f, 0, 9.81f}, Vec3{0, 0, 0}, dt);
+        CHECK(!imu.is_stationary());
+        CHECK(imu.velocity().x > 0.4f); // velocity accumulated normally
     }
 
     RUN_TESTS_RETURN();

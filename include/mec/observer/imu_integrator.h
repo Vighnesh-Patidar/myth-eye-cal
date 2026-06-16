@@ -16,6 +16,12 @@ namespace mec {
 
 struct IMUConfig {
     float gravity = 9.81f; // m/s^2, world -Z
+    // Zero-velocity update (§15.8). When the device is detected at rest, zero
+    // the velocity to stop accelerometer bias from drifting it.
+    bool  enable_zupt = true;
+    float accel_still_tol = 0.15f; // |accel| within this of g => candidate-still
+    float gyro_still_tol = 0.05f;  // rad/s
+    int   still_samples = 10;      // consecutive still samples to confirm (~50ms @200Hz)
 };
 
 class IMUIntegrator {
@@ -36,6 +42,7 @@ public:
     void set_orientation(const Quat& q) { q_ = q.normalized(); }
     Vec3 velocity() const { return v_; }
     Vec3 displacement() const { return p_; }
+    bool is_stationary() const { return stationary_; } // ZUPT state (§15.8)
 
 private:
     IMUConfig cfg_;
@@ -43,6 +50,8 @@ private:
     Quat prev_consumed_q_{1.0f, 0.0f, 0.0f, 0.0f}; // orientation at last consume()
     Vec3 v_{};
     Vec3 p_{};
+    int  still_count_ = 0;
+    bool stationary_ = false;
 };
 
 } // namespace mec
