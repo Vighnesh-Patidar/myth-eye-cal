@@ -31,6 +31,9 @@ struct IMUFrame {
     // direction in the current frame to the previous frame (§15.7 de-rotation).
     // Identity by default (no rotation / not provided).
     float dqw = 1.0f, dqx = 0.0f, dqy = 0.0f, dqz = 0.0f;
+    // Unit translation direction since the previous frame, body frame
+    // (§15.7 subject-motion gating). Zero = unknown -> epipolar gating disabled.
+    float tdx = 0.0f, tdy = 0.0f, tdz = 0.0f;
     float timestamp_s = 0.0f;
 };
 

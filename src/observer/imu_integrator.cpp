@@ -37,6 +37,14 @@ IMUFrame IMUIntegrator::consume(float timestamp_s) {
     // directions to the previous frame: dq = q_prev^{-1} ⊗ q_curr (§15.7).
     const Quat dq = mul(conj(prev_consumed_q_), q).normalized();
     f.dqw = dq.w; f.dqx = dq.x; f.dqy = dq.y; f.dqz = dq.z;
+
+    // Unit translation direction in the body frame (for epipolar gating, §15.7).
+    // p_ is the world-frame displacement; rotate it into the body frame.
+    const float pn = norm(p_);
+    if (pn > 1e-6f) {
+        const Vec3 dir_body = rotate(conj(q), p_ * (1.0f / pn));
+        f.tdx = dir_body.x; f.tdy = dir_body.y; f.tdz = dir_body.z;
+    }
     f.timestamp_s = timestamp_s;
 
     p_ = Vec3{}; // displacement resets each camera frame; velocity + orientation persist

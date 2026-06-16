@@ -52,33 +52,66 @@ void TemporalStereoDepth::resolve(PoseObservation& obs, const Frame& prev,
     const Quat dq_cam = mul(conj(cfg_.cam_to_body), mul(dq_body, cfg_.cam_to_body));
 
     const float fx = intr.fx, fy = intr.fy, cx = intr.cx, cy = intr.cy;
-    const float focal = fx; // assume ~square pixels (fx ~= fy)
+
+    // Translation direction in the camera frame (§15.7(a)). When known it
+    // enables epipolar projection + subject-motion gating; when zero we fall
+    // back to the plain flow-magnitude model (assumes lateral translation).
+    const Vec3 t_cam = rotate(conj(cfg_.cam_to_body), Vec3{imu.tdx, imu.tdy, imu.tdz});
+    const float t_norm = norm(t_cam);
+    const bool have_dir = t_norm > 1e-3f;
+    const Vec3 t_hat = have_dir ? t_cam * (1.0f / t_norm) : Vec3{};
 
     for (int i = 0; i < n; ++i) {
         if (!status_[i]) { obs.keypoints[i].depth_hint = lens_prior_m; continue; }
 
-        // Predicted rotation-only location of this keypoint in the previous
-        // frame: project the back-projected ray rotated by the inter-frame
-        // rotation (the infinite homography K·R·K^-1).
+        // De-rotate (§15.7(b)): subtract the rotation-only displacement (the
+        // infinite homography K·R·K^-1) so only translational flow remains.
         const float u = pts_[2 * i], v = pts_[2 * i + 1];
         const Vec3 ray{(u - cx) / fx, (v - cy) / fy, 1.0f};
         const Vec3 rp = rotate(dq_cam, ray);
         if (rp.z < 1e-3f) { obs.keypoints[i].depth_hint = lens_prior_m; continue; }
-        const float u_rot = fx * rp.x / rp.z + cx;
-        const float v_rot = fy * rp.y / rp.z + cy;
+        const float fdx = flow_[2 * i]     - (fx * rp.x / rp.z + cx - u);
+        const float fdy = flow_[2 * i + 1] - (fy * rp.y / rp.z + cy - v);
 
-        // Subtract the rotational flow; only the translational residual carries
-        // depth (camera-translation parallax).
-        const float tdx = flow_[2 * i]     - (u_rot - u);
-        const float tdy = flow_[2 * i + 1] - (v_rot - v);
-        const float disparity = std::sqrt(tdx * tdx + tdy * tdy);
-        if (disparity < cfg_.min_disparity_px) {
+        if (!have_dir) {
+            // Legacy model: |flow| is the disparity, lateral translation assumed.
+            const float disparity = std::sqrt(fdx * fdx + fdy * fdy);
+            if (disparity < cfg_.min_disparity_px) {
+                obs.keypoints[i].depth_hint = lens_prior_m;
+                continue;
+            }
+            obs.keypoints[i].depth_hint = kalman_fuse(
+                lens_prior_m, fx * b / disparity, cfg_.sigma_lens, cfg_.sigma_imu);
+            continue;
+        }
+
+        // Epipolar direction of the camera-translation motion field at this
+        // pixel: d = (-fx*Tx + (u-cx)*Tz, -fy*Ty + (v-cy)*Tz). Its magnitude is
+        // independent of depth; depth only scales the flow along it.
+        const float dvx = -fx * t_hat.x + (u - cx) * t_hat.z;
+        const float dvy = -fy * t_hat.y + (v - cy) * t_hat.z;
+        const float dmag = std::sqrt(dvx * dvx + dvy * dvy);
+        if (dmag < 1e-3f) { obs.keypoints[i].depth_hint = lens_prior_m; continue; } // at epipole
+        const float dux = dvx / dmag, duy = dvy / dmag;
+
+        // Split the de-rotated flow into epipolar (parallax) and perpendicular
+        // (subject-motion) components.
+        const float parallel = fdx * dux + fdy * duy;
+        const float perpx = fdx - parallel * dux, perpy = fdy - parallel * duy;
+        const float perp = std::sqrt(perpx * perpx + perpy * perpy);
+
+        if (perp > cfg_.motion_gate_px) {
+            obs.keypoints[i].depth_hint = lens_prior_m; // subject moving -> gate
+            continue;
+        }
+        const float parallax = std::fabs(parallel);
+        if (parallax < cfg_.min_disparity_px) {
             obs.keypoints[i].depth_hint = lens_prior_m; // pure rotation / too far
             continue;
         }
-        const float imu_depth = focal * b / disparity;
-        obs.keypoints[i].depth_hint =
-            kalman_fuse(lens_prior_m, imu_depth, cfg_.sigma_lens, cfg_.sigma_imu);
+        // depth = baseline * |d| / parallax  (reduces to f*b/disparity laterally)
+        obs.keypoints[i].depth_hint = kalman_fuse(
+            lens_prior_m, b * dmag / parallax, cfg_.sigma_lens, cfg_.sigma_imu);
     }
 }
 

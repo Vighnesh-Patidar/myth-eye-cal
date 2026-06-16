@@ -134,5 +134,42 @@ int main() {
         for (int i = 0; i < 3; ++i) CHECK_NEAR(o.keypoints[i].depth_hint, expected, 0.6);
     }
 
+    // --- §15.7(a) subject-motion gating ---
+    const float b = 0.05f, lens = 10.0f;
+    const float expected_lat =
+        TemporalStereoDepth::kalman_fuse(lens, b * K.fx / 4.0f, 0.2f, 0.05f);
+
+    // Flow aligned with the (lateral +X) translation direction -> all epipolar,
+    // no perpendicular component: depth recovered, not gated.
+    {
+        fill(prev, w, h, 4.0f, 0.0f);
+        const Frame pf{prev.data(), w, h, 0};
+        PoseObservation o = kps_at(kPts, 3, w, h);
+        IMUFrame imu; imu.baseline_m = b; imu.tdx = 1.0f; // camera-frame +X
+        tsd.resolve(o, pf, cf, imu, K, lens);
+        for (int i = 0; i < 3; ++i) CHECK_NEAR(o.keypoints[i].depth_hint, expected_lat, 0.6);
+    }
+
+    // Large flow perpendicular to the translation direction = subject motion:
+    // gated to the lens prior (not a bogus depth from the off-epipolar flow).
+    {
+        fill(prev, w, h, 4.0f, 4.0f); // 4px perpendicular to +X epipolar line
+        const Frame pf{prev.data(), w, h, 0};
+        PoseObservation o = kps_at(kPts, 3, w, h);
+        IMUFrame imu; imu.baseline_m = b; imu.tdx = 1.0f;
+        tsd.resolve(o, pf, cf, imu, K, 3.3f);
+        for (int i = 0; i < 3; ++i) CHECK_NEAR(o.keypoints[i].depth_hint, 3.3, 1e-2);
+    }
+
+    // Small perpendicular component (below the gate) still yields depth.
+    {
+        fill(prev, w, h, 4.0f, 0.2f);
+        const Frame pf{prev.data(), w, h, 0};
+        PoseObservation o = kps_at(kPts, 3, w, h);
+        IMUFrame imu; imu.baseline_m = b; imu.tdx = 1.0f;
+        tsd.resolve(o, pf, cf, imu, K, lens);
+        for (int i = 0; i < 3; ++i) CHECK_NEAR(o.keypoints[i].depth_hint, expected_lat, 0.6);
+    }
+
     RUN_TESTS_RETURN();
 }

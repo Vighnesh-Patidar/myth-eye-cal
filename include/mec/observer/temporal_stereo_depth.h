@@ -38,6 +38,11 @@ public:
         float min_baseline_m = 0.005f;
         float max_baseline_m = 0.500f;
         float min_disparity_px = 0.5f;
+        // §15.7(a) subject-motion gating: when the translation direction is
+        // known, a de-rotated flow whose component perpendicular to the
+        // epipolar direction exceeds this (px) is treated as subject motion and
+        // the keypoint falls back to the lens prior. Needs imu.td* set.
+        float motion_gate_px = 0.75f;
         // Fixed camera->body rotation (§4.4). Used to express the IMU's
         // body-frame inter-frame rotation in the camera frame for de-rotation.
         Quat cam_to_body{};           // identity by default

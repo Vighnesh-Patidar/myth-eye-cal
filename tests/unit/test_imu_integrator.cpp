@@ -51,6 +51,9 @@ int main() {
         for (int i = 0; i < 20; ++i) imu.integrate(g_only, Vec3{0, 0, 0}, dt);
         const IMUFrame fb = imu.consume(0.6f);
         CHECK_NEAR(fb.baseline_m, 0.1, 2e-3);
+        // Motion was purely +X -> reported translation direction ~ (1,0,0) (§15.7a).
+        CHECK_NEAR(fb.tdx, 1.0, 1e-2);
+        CHECK_NEAR(fb.tdy, 0.0, 1e-2);
     }
 
     // 4) reset() zeroes velocity + displacement (orientation kept).
