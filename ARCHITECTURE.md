@@ -893,18 +893,30 @@ velocity baseline). Two notes:
   rebuilds) — exactly the case temporal stereo needs. So `consume()` resets the
   displacement accumulator (bounding position drift across frames, the §13
   intent) but carries velocity and orientation as continuous physical state.
-- **Velocity drift is unbounded without an absolute reference (limitation).**
-  Resetting displacement bounds *position* drift, but accelerometer bias still
-  integrates into *velocity*, which then biases every subsequent baseline. Over
-  a 30-40 ms inter-frame interval the error is small; over a long session it
-  grows. **Recommended upgrade:** zero-velocity updates (ZUPT) when the device
-  is detected stationary, and/or fusing the visual optical-flow scale back into
-  velocity — pairs naturally with the §15.7 de-rotation work. The SensorManager
-  200 Hz sampling source is the only Android-specific piece still deferred; the
-  integration math here is the whole algorithm.
+- **Velocity drift bounded by ZUPT (done).** Resetting displacement bounds
+  *position* drift, but accelerometer bias still integrates into *velocity*.
+  `IMUIntegrator` now applies a **zero-velocity update**: when specific force
+  ≈ g and gyro ≈ 0 for `still_samples` consecutive samples it declares the
+  device at rest and zeroes velocity (and ignores the biased specific force),
+  so bias cannot drift velocity across rest periods. Verified
+  (`test_imu_integrator` cases 5–6): a biased accelerometer at rest drifts
+  ~0.05 m without ZUPT but ~0 with it, and ZUPT does not fire under genuine
+  acceleration.
+  **Fundamental limitation:** an accelerometer cannot distinguish *rest* from
+  *constant velocity* (both give |f| = g, ω = 0), so ZUPT also fires during
+  rare perfectly-constant-velocity translation and would zero a real velocity.
+  Benign for this app (deliberate translation carries jerk; rest correctly
+  wants v = 0; the constant-velocity baseline is small and degrades gracefully
+  to the lens prior), but it is why steady-coast integration must disable ZUPT.
+  A visual-velocity cross-check (optical-flow scale → velocity) would remove the
+  ambiguity — tracked as a v1.0 item. The SensorManager 200 Hz sampling source
+  is the only Android-specific piece still deferred; the math here is complete.
 
 ---
 
+*Document version: 0.3.8 — §15.8 ZUPT (zero-velocity update) bounds IMU velocity
+drift; all v0.1+v0.2 algorithms done on Linux — remaining work is the Android
+port (capture, MediaPipe, JNI) + the mith-atomas submodule*
 *Document version: 0.3.7 — §15.7(a) epipolar subject-motion gating + general
 (focus-of-expansion) depth; residual: motion along the epipolar line needs
 cross-observer reconciliation*

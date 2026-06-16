@@ -82,12 +82,14 @@ From ARCHITECTURE.md §15. **Fixed** = already corrected in code + doc;
   depth also generalised to focus-of-expansion motion. Residual: subject motion
   *along* the epipolar line needs cross-observer reconciliation. NEON LK still
   deferred to Android.
-- §15.8 **Upgrade** — IMU velocity drift is unbounded without ZUPT / visual
-  velocity fusion ("reset each frame" = reset displacement, not velocity).
+- §15.8 **Done** — ZUPT bounds IMU velocity drift at rest (`test_imu_integrator`
+  5–6). Residual: rest vs constant-velocity ambiguity → wants a visual-velocity
+  cross-check (v1.0).
 
-Highest-value accuracy work, in order: **§15.8** (ZUPT — bound IMU velocity
-drift), **§15.3** (anisotropic per-observation covariance fusion), then
-§15.7 cross-observer reconciliation (subject motion along the epipolar line).
+Remaining accuracy work (all optional refinements, Linux-testable): **§15.3**
+(anisotropic per-observation covariance fusion), then cross-observer
+reconciliation + visual-velocity cross-check (covers §15.7 motion-along-epipolar
+and §15.8 rest/constant-velocity ambiguity). None block the Android port.
 
 ## Suggested v0.3 next steps
 
