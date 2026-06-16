@@ -75,10 +75,14 @@ From ARCHITECTURE.md §15. **Fixed** = already corrected in code + doc;
 
 - §15.1 **Fixed** — 128-byte payload overflow (was 147 B).
 - §15.2 **Fixed** — `double` timestamps (float couldn't hold a synced clock).
-- §15.3 **Done** — anisotropic information-form fusion (`fuse_anisotropic`,
-  view-ray reconstruction in the aggregator). End-to-end ~2.0cm from 12cm-depth-
-  noise observers (`test_anisotropic_fusion`, `test_ecs_pipeline`). Residual:
-  Kalman tracker still scalar (consumes an RMS summary) — v1.0.
+- §15.3 **Done (incl. residual)** — anisotropic information-form fusion
+  (`fuse_anisotropic`, view-ray reconstruction in the aggregator). End-to-end
+  ~2.0cm from 12cm-depth-noise observers (`test_anisotropic_fusion`,
+  `test_ecs_pipeline`). The former scalar-tracker residual is **resolved**: the
+  per-keypoint tracker is now a coupled 6-state Kalman filter taking the full
+  fused 3×3 covariance as `R`, so anisotropy carries through time
+  (`test_kalman_tracker`); isotropic inputs reduce exactly to the old per-axis
+  filters.
 - §15.4 **Fixed** — 33→17 keypoint mapping specified (`kMediapipe33To17`).
 - §15.5 **Deviation** — hand-rolled RFC 6455 server instead of uWebSockets.
 - §15.6 **Scaffolding** — ECS on a mock `mith::` runtime; swap for the real
@@ -94,10 +98,9 @@ From ARCHITECTURE.md §15. **Fixed** = already corrected in code + doc;
   cross-check (v1.0).
 
 All §15 accuracy items are now addressed. Remaining are **v1.0 refinements**
-(optional, Linux-testable, none block the Android port): anisotropic 3×3
-Kalman tracker (§15.3 residual), cross-observer reconciliation (§15.7
-motion-along-epipolar), and a visual-velocity cross-check (§15.8 rest vs
-constant-velocity ambiguity).
+(optional, Linux-testable, none block the Android port): cross-observer
+reconciliation (§15.7 motion-along-epipolar), and a visual-velocity cross-check
+(§15.8 rest vs constant-velocity ambiguity).
 
 ## Suggested v0.3 next steps
 

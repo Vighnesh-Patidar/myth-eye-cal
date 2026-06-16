@@ -116,7 +116,13 @@ bool MultiObserverFusion::fuse_anisotropic(const std::vector<WorldKeypoint>& obs
     out.wx = static_cast<float>(i00 * e0 + i01 * e1 + i02 * e2);
     out.wy = static_cast<float>(i01 * e0 + i11 * e1 + i12 * e2);
     out.wz = static_cast<float>(i02 * e0 + i12 * e1 + i22 * e2);
-    // Isotropic summary of the fused covariance (RMS of the principal axes).
+    // Full fused covariance (Σ Λ_i)^-1 — carried to the Kalman tracker (§15.3)
+    // so its anisotropy survives temporal filtering.
+    out.cov_xx = static_cast<float>(i00); out.cov_xy = static_cast<float>(i01);
+    out.cov_xz = static_cast<float>(i02); out.cov_yy = static_cast<float>(i11);
+    out.cov_yz = static_cast<float>(i12); out.cov_zz = static_cast<float>(i22);
+    // Isotropic summary of the fused covariance (RMS of the principal axes),
+    // kept for display and the scalar-only consumers.
     out.uncertainty_r = static_cast<float>(std::sqrt(std::max((i00 + i11 + i22) / 3.0, 0.0)));
     out.rx = out.ry = out.rz = 0.0f;
     out.depth_uncertainty = 0.0f;

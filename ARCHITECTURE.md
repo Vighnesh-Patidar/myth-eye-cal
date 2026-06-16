@@ -797,9 +797,18 @@ sits >15 cm off (>5× better, `test_anisotropic_fusion`); end-to-end, three
 diverse-angle observers with 12 cm per-view depth noise fuse to ~2.0 cm mean
 error (`test_ecs_pipeline`).
 
-**Residual:** the per-keypoint `KalmanTracker` is still scalar — it consumes an
-isotropic RMS summary of the fused covariance. A fully anisotropic 3×3-covariance
-tracker is a further (smaller) refinement, tracked for v1.0.
+**Resolved (was a residual):** the per-keypoint tracker is now a coupled
+**6-state (position + velocity) Kalman filter that accepts the full fused 3×3
+covariance** as its measurement noise `R`, so the anisotropy survives temporal
+filtering — the gain is direction-dependent (sharp lateral axes are trusted, the
+ambiguous depth axis is smoothed harder) and cross-axis correlations persist.
+`fuse_anisotropic()` now emits the fused covariance `(ΣΛ_i)⁻¹` on
+`WorldKeypoint::cov_*`; `KeypointKalmanTracker` consumes it and re-emits the
+predicted position covariance from `predict()`. When an observation carries no
+covariance (`cov_xx ≤ 0`) `R` falls back to `uncertainty_r² · I`, reducing
+*exactly* to the previous three decoupled per-axis filters (back-compatible).
+Verified by `test_kalman_tracker` (anisotropy preserved at steady state;
+direction-dependent gain; zero cross-covariance on the isotropic path).
 
 ### 15.5 Render server: uWebSockets replaced by a hand-rolled RFC 6455 server *(deviation)*
 

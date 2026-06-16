@@ -58,6 +58,14 @@ struct WorldKeypoint {
     float   depth_uncertainty = 0.0f;
     float   confidence = 0.0f;
     double  timestamp_s = 0.0;
+    // §15.3 fused-position covariance (symmetric 3x3, row-major upper triangle):
+    //   [cov_xx cov_xy cov_xz; cov_xy cov_yy cov_yz; cov_xz cov_yz cov_zz].
+    // Set by fuse_anisotropic() and produced by the Kalman tracker so the
+    // anisotropic (along-ray vs lateral) uncertainty survives temporal
+    // filtering. cov_xx <= 0 means "unset" -> consumers fall back to the
+    // isotropic uncertainty_r^2 * I model.
+    float   cov_xx = 0.0f, cov_xy = 0.0f, cov_xz = 0.0f;
+    float   cov_yy = 0.0f, cov_yz = 0.0f, cov_zz = 0.0f;
 };
 
 // --- Wire payload broadcast via UserStateVector (§4.5) --------------------
