@@ -11,18 +11,15 @@
     text-shadow: 0 1px 2px #000; pointer-events: none; }
   #stats b { color: #7fd5a0; }
   #bar { position: fixed; top: 10px; right: 12px; }
-  #bar input { width: 220px; background: #161a22; color: #cdd6e0;
-    border: 1px solid #2a3140; border-radius: 4px; padding: 4px 6px; }
+  #bar input { width: 230px; background: #161a22; color: #cdd6e0;
+    border: 1px solid #2a3140; border-radius: 4px; padding: 5px 7px; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     margin-right: 5px; vertical-align: middle; }
 </style>
 </head>
 <body>
 <div id="stats"></div>
-<div id="bar">
-  <input id="url" value="ws://localhost:8080/pose"
-         title="WebSocket pose endpoint" />
-</div>
+<div id="bar"><input id="url" value="ws://localhost:8080/pose" title="WebSocket pose endpoint" /></div>
 
 <script type="importmap">
 { "imports": {
@@ -48,59 +45,84 @@ const N_KP = 17;
 // --- scene ---------------------------------------------------------------
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0c10);
-const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.01, 100);
-camera.position.set(2.4, 1.2, 3.2);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.01, 200);
+camera.position.set(2.2, 1.4, 3.0);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.9, 0);
+controls.enableDamping = true;
+controls.target.set(0, 1.0, 0);
 
-scene.add(new THREE.GridHelper(6, 12, 0x223044, 0x161d28));
-const hemi = new THREE.HemisphereLight(0xffffff, 0x202830, 1.1);
-scene.add(hemi);
+scene.add(new THREE.GridHelper(8, 16, 0x223044, 0x141a24));
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x202830, 1.0));
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(3, 6, 4);
+scene.add(key);
 
 // confidence -> colour: red (low/predicted) -> yellow -> green (high).
 const tmpColor = new THREE.Color();
-function confColour(c) {
-  const h = Math.max(0, Math.min(1, c)) * 0.33; // 0=red .. 0.33=green
-  tmpColor.setHSL(h, 0.85, 0.55);
-  return tmpColor;
-}
+function confColour(c) { tmpColor.setHSL(Math.max(0, Math.min(1, c)) * 0.33, 0.85, 0.55); return tmpColor; }
 
-const jointGeo = new THREE.SphereGeometry(0.035, 14, 12);
+const rig = new THREE.Group();
+scene.add(rig);
+
+const jointGeo = new THREE.SphereGeometry(0.05, 18, 14);
 const joints = [];
 for (let i = 0; i < N_KP; i++) {
-  const m = new THREE.Mesh(jointGeo, new THREE.MeshStandardMaterial({ roughness: 0.5 }));
-  scene.add(m); joints.push(m);
+  const m = new THREE.Mesh(jointGeo, new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.1 }));
+  rig.add(m); joints.push(m);
 }
-const boneMat = BONES.map(() => new THREE.LineBasicMaterial());
-const bones = BONES.map((_, i) => {
-  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-  const l = new THREE.Line(g, boneMat[i]); scene.add(l); return l;
+// Bones as oriented cylinders (unit height, scaled per frame).
+const boneGeo = new THREE.CylinderGeometry(0.022, 0.022, 1, 14);
+const bones = BONES.map(() => {
+  const m = new THREE.Mesh(boneGeo, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.1 }));
+  rig.add(m); return m;
 });
 
-// map world (wx,wy,wz) [x right, y forward, z up] -> three (x, z_up, y)
+// world (wx,wy,wz) [x right, y forward, z up] -> three (x, z_up, y)
 const P = (k) => new THREE.Vector3(k.wx, k.wz, k.wy);
+const UP = new THREE.Vector3(0, 1, 0);
 
-let latest = null, observerCount = 0, latencyMs = 0, source = 'demo';
+// Smoothed joint positions (reduce jitter); confidences for colouring.
+const sm = Array.from({ length: N_KP }, () => new THREE.Vector3());
+const conf = new Float32Array(N_KP);
+let primed = false;
+
+function orient(mesh, a, b) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  if (len < 1e-5) { mesh.visible = false; return; }
+  mesh.visible = true;
+  mesh.position.copy(a).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(UP, dir.normalize());
+  mesh.scale.set(1, len, 1);
+}
+
+const centroid = new THREE.Vector3(0, 1, 0);
 function applyPose(kps) {
+  const t = primed ? 0.35 : 1.0;          // lerp factor (snap on first frame)
+  const c = new THREE.Vector3();
   for (let i = 0; i < N_KP; i++) {
-    const k = kps[i]; if (!k) continue;
-    const p = P(k);
-    joints[i].position.copy(p);
-    joints[i].material.color.copy(confColour(k.conf));
+    sm[i].lerp(P(kps[i]), t);
+    conf[i] = kps[i].conf;
+    joints[i].position.copy(sm[i]);
+    joints[i].material.color.copy(confColour(conf[i]));
+    c.add(sm[i]);
   }
+  primed = true;
+  c.multiplyScalar(1 / N_KP);
+  centroid.lerp(c, 0.1);                   // smooth camera target
+  controls.target.lerp(centroid, 0.1);
   BONES.forEach((e, bi) => {
-    const a = P(kps[e[0]]), b = P(kps[e[1]]);
-    bones[bi].geometry.setFromPoints([a, b]);
-    boneMat[bi].color.copy(confColour(Math.min(kps[e[0]].conf, kps[e[1]].conf)));
+    orient(bones[bi], sm[e[0]], sm[e[1]]);
+    bones[bi].material.color.copy(confColour(Math.min(conf[e[0]], conf[e[1]])));
   });
 }
 
 // --- WebSocket ingest ----------------------------------------------------
-let ws = null;
+let ws = null, latest = null, observerCount = 0, latencyMs = 0, source = 'demo';
 function connect(url) {
   if (ws) { ws.onclose = null; ws.close(); }
   source = 'connecting';
@@ -121,16 +143,22 @@ const urlInput = document.getElementById('url');
 urlInput.addEventListener('change', () => connect(urlInput.value));
 connect(urlInput.value);
 
-// --- demo fallback: synthetic walk so the page is never blank ------------
+// --- demo fallback: a gently moving skeleton so the page is never blank ---
 const DEMO = [
  [0,0,1.70],[0.03,0,1.73],[-0.03,0,1.73],[0.07,0,1.72],[-0.07,0,1.72],
  [0.18,0,1.45],[-0.18,0,1.45],[0.20,0,1.15],[-0.20,0,1.15],[0.22,0,0.90],
  [-0.22,0,0.90],[0.12,0,0.95],[-0.12,0,0.95],[0.13,0,0.52],[-0.13,0,0.52],
  [0.13,0,0.05],[-0.13,0,0.05]];
 function demoPose(t) {
-  const dy = 0.5*Math.sin(t*0.4), bob = 0.03*Math.sin(t*4);
-  return DEMO.map((c,i) => ({ id:i, wx:c[0], wy:c[1]+dy, wz:c[2]+bob,
-    conf: 0.55 + 0.4*Math.abs(Math.sin(t + i)) }));
+  const sw = Math.sin(t * 1.5) * 0.12, bob = 0.02 * Math.sin(t * 3);
+  return DEMO.map((p, i) => {
+    let wx = p[0], wz = p[2] + bob;
+    if (i === 9)  { wx += sw; }            // left wrist swing
+    if (i === 10) { wx -= sw; }            // right wrist swing
+    if (i === 7)  { wx += sw * 0.5; }
+    if (i === 8)  { wx -= sw * 0.5; }
+    return { id: i, wx, wy: 0, wz, conf: 0.6 + 0.35 * Math.abs(Math.sin(t + i)) };
+  });
 }
 
 // --- loop ----------------------------------------------------------------
@@ -139,17 +167,16 @@ const clock = new THREE.Clock();
 function tick() {
   requestAnimationFrame(tick);
   const t = clock.getElapsedTime();
-  const kps = (source === 'live' && latest) ? latest : demoPose(t);
-  applyPose(kps);
+  applyPose((source === 'live' && latest) ? latest : demoPose(t));
   controls.update();
   renderer.render(scene, camera);
-  const mc = kps.reduce((s,k)=>s+k.conf,0)/kps.length;
+  const mc = (sm.length ? conf.reduce((s, x) => s + x, 0) / N_KP : 0);
   const col = source === 'live' ? '#7fd5a0' : '#d6a14a';
   stats.innerHTML =
     `<b>Myth-Eye-Cal</b>\n` +
     `<span class="dot" style="background:${col}"></span>source: ${source}\n` +
-    `observers: ${source==='live'?observerCount:'—'}\n` +
-    `latency:   ${source==='live'?latencyMs+'ms':'—'}\n` +
+    `observers: ${source === 'live' ? observerCount : '—'}\n` +
+    `latency:   ${source === 'live' ? latencyMs + 'ms' : '—'}\n` +
     `mean conf: ${mc.toFixed(2)}`;
 }
 tick();
