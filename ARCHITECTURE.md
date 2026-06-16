@@ -666,8 +666,8 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
 ## 12. Roadmap
 
 ### v0.1 — Fusion Core (no camera)
-- [x] `MultiObserverFusion` + `KeypointKalmanTracker` (standalone classes; ECS
-      `System` wrappers deferred to MithAtomas integration — see §9)
+- [x] `MultiObserverFusion` + `KeypointKalmanTracker` + all six §9 `System`
+      wrappers, wired through a mock MithAtomas runtime (§15.6)
 - [x] Simulated LOS node (`sim/synthetic_pose.h`, `sim_pose_demo`)
 - [x] `myth-eye-cal-viewer.html` Three.js renderer
 - [x] WebSocket render server (hand-rolled, §15.5; `render_server_demo`)
@@ -805,8 +805,34 @@ an explicit `kMediapipe33To17` index table (`keypoint_projector.h`). Note one
 consequence of the strict 17-slot skeleton: only one ankle survives the cut
 (slot 16); a future revision may prefer 18 slots or re-pack the face points.
 
+### 15.6 ECS systems stubbed against a mock MithAtomas *(scaffolding)*
+
+The §9 systems are implemented against a header-only **mock** `mith::` runtime
+(`mock/mith/atomas.h`): `World` (entity/component store), `SystemScheduler`
+(mixed-rate, dependency-ordered), `NeighbourTable`, `UserNeighbourTable`, the
+user beacon channel, and the core `Position`/`Orientation`/`BehaviourState`
+components. This lets all six systems plus the `LOSDetector` (§3.2) be built,
+wired, and tested on Linux before the real coordination layer exists. Swap the
+`mock/` directory for the real submodule (same names) when it lands; `mec_core`
+itself stays free of the mock.
+
+Two findings surfaced while wiring it:
+
+- **Node-local scratch components.** The aggregator→fusion buffer, the Kalman
+  filter bank, and the observer-pipeline observation seam are node-local and
+  must NOT be replicated by the coordination layer — so they are deliberately
+  absent from §8's StateVector table (`internal_components.h`).
+- **The wire payload carries no per-observation uncertainty.** The 128-byte
+  budget (§4.5) leaves room only for confidence, not `uncertainty_r`. The
+  aggregator therefore reconstructs a nominal σ from confidence
+  (`σ ≈ 0.03 / confidence`) before fusion. This is lossy; if accuracy demands
+  it, a future payload could spend one byte on a quantised σ (dropping to 16
+  keypoints, or shrinking the frame_id) — tracked alongside §15.3.
+
 ---
 
+*Document version: 0.3.3 — §9 ECS systems + LOSDetector stubbed against a mock
+MithAtomas runtime (§15.6); v0.1 roadmap complete on Linux*
 *Document version: 0.3.2 — v0.1 fusion core + hand-rolled WebSocket render
 server implemented (§15.5); v0.1 roadmap complete pending MithAtomas ECS wrappers*
 *Document version: 0.3.1 — Design review (§15): 128-byte payload fix, double

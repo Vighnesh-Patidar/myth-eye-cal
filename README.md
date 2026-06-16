@@ -20,12 +20,16 @@ Implemented:
 - Synthetic LOS-node simulator + `sim_pose_demo` (§12)
 - `WebSocketRenderServer` — hand-rolled RFC 6455 server (§6, §15.5)
 - `myth-eye-cal-viewer.html` — Three.js skeletal renderer (§6.4)
-- `render_server_demo` — live fusion sim served over WebSocket to the browser
-- Unit + integration tests (fusion math, Kalman, projector, full pipeline,
-  WebSocket handshake + loopback broadcast)
+- `LOSDetector` — line-of-sight hysteresis state machine (§3.2)
+- All six §9 ECS `System`s + a header-only **mock MithAtomas** runtime
+  (`mock/mith/`, §15.6) — `ObserverActivation`, `KeypointBroadcast`,
+  `KeypointAggregator`, `PoseFusion`, `KalmanPredict`, `RenderSerialiser`
+- `render_server_demo` / `ecs_pipeline_demo` — live fusion served over WebSocket
+- Unit + integration tests (fusion math, Kalman, projector, LOS detector, full
+  pipeline, WebSocket handshake + loopback, ECS pipeline through the scheduler)
 
-Deferred (need the `mith-atomas` submodule / Android): the ECS `System`
-classes (§9), MediaPipe pose, temporal-stereo depth.
+Deferred (need the real `mith-atomas` submodule / Android): MediaPipe pose,
+temporal-stereo depth, IMU integration, the Android/JNI shell.
 
 ## Build & test (Linux)
 
