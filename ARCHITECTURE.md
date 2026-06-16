@@ -770,20 +770,31 @@ corrupts windowing and ordering.
 `uint32` milliseconds since a session epoch (1 ms resolution, 49-day range) to
 stay within the 4-byte field.
 
-### 15.3 Scalar `uncertainty_r` cannot model anisotropic depth error *(upgrade, deferred)*
+### 15.3 Anisotropic covariance fusion *(done)*
 
-§5.2's "geometry bonus" states that observers at orthogonal angles contribute
+§5.2's "geometry bonus" requires that observers at orthogonal angles contribute
 independent depth information. A single **isotropic scalar** `uncertainty_r`
-per keypoint cannot express that — monocular / temporal-stereo error is large
-*along the camera ray* and small *laterally*, an anisotropic covariance the
-scalar collapses. The v0.1 fuser is therefore a correct scalar inverse-variance
-weighted mean, but it does **not** realise the per-axis geometry bonus as
-described.
+could not express that — monocular / temporal-stereo error is large *along the
+camera ray* and small *laterally* — so the original scalar weighted mean did
+**not** realise the per-axis bonus.
 
-**Planned upgrade (post-v0.1):** carry a per-observation 3×3 covariance (or at
-minimum an along-ray vs lateral σ split) and fuse with the full information
-form `Σ Σᵢ⁻¹` / `Σ Σᵢ⁻¹ xᵢ`. The `WorldKeypoint` API and `MultiObserverFusion`
-are documented as the extension points. Tracked as a v1.0 accuracy item.
+**Done.** `WorldKeypoint` now carries a view ray (`rx,ry,rz`) and an along-ray
+`depth_uncertainty` (with `uncertainty_r` as the lateral σ).
+`MultiObserverFusion::fuse_anisotropic()` fuses in the **information form**
+`x = (Σ Λᵢ)⁻¹ (Σ Λᵢ xᵢ)`, with `Λᵢ = conf·[ (1/σ_lat²)(I − r rᵀ) + (1/σ_depth²) r rᵀ ]`
+(isotropic observations, zero ray, reduce to `conf/σ² · I`). In the ECS path the
+`KeypointAggregatorSystem` reconstructs each view ray from the sender's world
+position (carried on the `UserStateVector`, since the 128-byte payload has no
+room — §15.6) and `PoseFusionSystem` calls `fuse_anisotropic`.
+
+Verified: the orthogonal-observer unit test fuses to <2 cm where the naive mean
+sits >15 cm off (>5× better, `test_anisotropic_fusion`); end-to-end, three
+diverse-angle observers with 12 cm per-view depth noise fuse to ~2.0 cm mean
+error (`test_ecs_pipeline`).
+
+**Residual:** the per-keypoint `KalmanTracker` is still scalar — it consumes an
+isotropic RMS summary of the fused covariance. A fully anisotropic 3×3-covariance
+tracker is a further (smaller) refinement, tracked for v1.0.
 
 ### 15.5 Render server: uWebSockets replaced by a hand-rolled RFC 6455 server *(deviation)*
 
@@ -914,6 +925,9 @@ velocity baseline). Two notes:
 
 ---
 
+*Document version: 0.3.9 — §15.3 anisotropic covariance fusion (information form,
+view-ray reconstruction in the aggregator); end-to-end ~2.0cm from 12cm-depth-
+noise observers. All §15 accuracy items now addressed except v1.0 refinements*
 *Document version: 0.3.8 — §15.8 ZUPT (zero-velocity update) bounds IMU velocity
 drift; all v0.1+v0.2 algorithms done on Linux — remaining work is the Android
 port (capture, MediaPipe, JNI) + the mith-atomas submodule*
