@@ -676,13 +676,14 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
       live WebSocket → browser render path verified
 
 ### v0.2 — Observer Pipeline
-- [ ] MediaPipe Pose integration (Android, Tasks API)
-- [ ] `TemporalStereoDepth` — Lucas-Kanade optical flow (C++17 NEON, no OpenCV)
-- [ ] `IMUIntegrator` — Android SensorManager 200Hz, dead reckoning per frame
-- [ ] Kalman fusion of lens prior + IMU depth per keypoint
-- [ ] `KeypointProjector` with camera intrinsics from `CameraCharacteristics`
-- [ ] `LOSDetector` with hysteresis (§3.2 thresholds)
-- [ ] Android JNI bridge (fusion core + MithAtomas as .so via NDK)
+- [ ] MediaPipe Pose integration (Android, Tasks API) — needs Android
+- [x] `TemporalStereoDepth` — Lucas-Kanade optical flow (portable C++17
+      reference, no OpenCV; NEON deferred to Android build, §15.7)
+- [ ] `IMUIntegrator` — Android SensorManager 200Hz, dead reckoning — needs Android
+- [x] Kalman fusion of lens prior + IMU depth per keypoint
+- [x] `KeypointProjector` with camera intrinsics (done in v0.1)
+- [x] `LOSDetector` with hysteresis (§3.2 thresholds)
+- [ ] Android JNI bridge (fusion core + MithAtomas as .so via NDK) — needs Android
 
 ### v0.3 — Full System
 - [ ] End-to-end: phone camera → fused pose → browser render
@@ -829,8 +830,38 @@ Two findings surfaced while wiring it:
   it, a future payload could spend one byte on a quantised σ (dropping to 16
   keypoints, or shrinking the frame_id) — tracked alongside §15.3.
 
+### 15.7 Temporal-stereo depth: portable LK + a physical caveat *(deviation + upgrade)*
+
+`TemporalStereoDepth` + `LucasKanade` implement §4.3 (metric depth from IMU
+baseline × optical-flow disparity, Kalman-fused with the lens prior). Two notes:
+
+- **Portable scalar LK, not NEON.** The reference Lucas-Kanade
+  (`lucas_kanade.{h,cpp}`) is portable C++17 so it builds and is tested on Linux
+  x86 (recovers known sub-pixel shifts; depth tests recover `f·b/disparity`).
+  §4.3/§13's NEON intrinsics are an ARM build-time optimisation of the inner
+  window loop that does not change the interface; deferred to the Android build.
+  `Frame::data` is `const` here (read-only) — a harmless tightening of §4.1.
+
+- **Disparity is contaminated on a moving subject (physical limitation).**
+  Temporal stereo recovers depth from camera-*translation* parallax of *static*
+  points. Two effects break that assumption for this application:
+  *(a)* the **subject is moving** — a keypoint's optical flow is camera parallax
+  *plus* the subject's own image motion, so `depth = f·b/disparity` is biased;
+  *(b)* **inter-frame camera rotation** produces flow unrelated to depth and must
+  be de-rotated first. The current `IMUFrame` carries only a single orientation
+  quaternion and a scalar baseline — not the inter-frame *rotation delta* needed
+  to subtract rotational flow. **Recommended upgrade:** extend `IMUFrame` with
+  the prev→curr rotation (or pass both orientations), warp the previous frame by
+  the rotation-at-infinity before LK, and gate/weight depth updates by estimated
+  subject motion (or reconcile against the multi-observer fused estimate). Until
+  then, depth is most trustworthy when the phone translates and the subject is
+  near-static; the σ_imu=0.05 weighting and lens-prior fusion bound the damage.
+  Tracked as a v1.0 accuracy item alongside §15.3.
+
 ---
 
+*Document version: 0.3.4 — TemporalStereoDepth + pyramidal Lucas-Kanade (§15.7,
+portable C++17, no OpenCV); v0.2 depth/projection/LOS algorithms done on Linux*
 *Document version: 0.3.3 — §9 ECS systems + LOSDetector stubbed against a mock
 MithAtomas runtime (§15.6); v0.1 roadmap complete on Linux*
 *Document version: 0.3.2 — v0.1 fusion core + hand-rolled WebSocket render

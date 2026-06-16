@@ -21,6 +21,8 @@ Implemented:
 - `WebSocketRenderServer` — hand-rolled RFC 6455 server (§6, §15.5)
 - `myth-eye-cal-viewer.html` — Three.js skeletal renderer (§6.4)
 - `LOSDetector` — line-of-sight hysteresis state machine (§3.2)
+- `LucasKanade` + `TemporalStereoDepth` — pyramidal optical flow and metric
+  depth from IMU baseline + lens prior, no OpenCV (§4.3, §15.7)
 - All six §9 ECS `System`s + a header-only **mock MithAtomas** runtime
   (`mock/mith/`, §15.6) — `ObserverActivation`, `KeypointBroadcast`,
   `KeypointAggregator`, `PoseFusion`, `KalmanPredict`, `RenderSerialiser`
