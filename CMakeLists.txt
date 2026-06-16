@@ -23,6 +23,7 @@ add_library(mec_core
   src/observer/keypoint_projector.cpp
   src/observer/lucas_kanade.cpp
   src/observer/temporal_stereo_depth.cpp
+  src/observer/imu_integrator.cpp
   src/render/websocket_render_server.cpp
 )
 target_include_directories(mec_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -61,6 +62,7 @@ mec_add_test(test_keypoint_projector    tests/unit/test_keypoint_projector.cpp)
 mec_add_test(test_los_detector          tests/unit/test_los_detector.cpp)
 mec_add_test(test_lucas_kanade          tests/unit/test_lucas_kanade.cpp)
 mec_add_test(test_temporal_stereo       tests/unit/test_temporal_stereo.cpp)
+mec_add_test(test_imu_integrator        tests/unit/test_imu_integrator.cpp)
 mec_add_test(test_fusion_pipeline       tests/integration/test_fusion_pipeline.cpp)
 mec_add_test(test_websocket_server      tests/integration/test_websocket_server.cpp)
 

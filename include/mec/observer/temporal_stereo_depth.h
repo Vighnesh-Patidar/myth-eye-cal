@@ -26,12 +26,7 @@
 
 namespace mec {
 
-// Scalar IMU summary for one inter-frame interval (§4.3).
-struct IMUFrame {
-    float baseline_m = 0.0f;                       // distance moved since last frame
-    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f; // orientation at capture
-    float timestamp_s = 0.0f;
-};
+// IMUFrame (the scalar IMU summary, §4.3) is defined in frame.h.
 
 class TemporalStereoDepth {
 public:

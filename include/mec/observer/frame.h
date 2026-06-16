@@ -21,4 +21,13 @@ struct FrameMeta {
     float imu_qw = 1.0f, imu_qx = 0.0f, imu_qy = 0.0f, imu_qz = 0.0f;
 };
 
+// Scalar IMU summary for one inter-frame interval (§4.3). Produced by
+// IMUIntegrator (or injected via FrameMeta on non-Android targets) and consumed
+// by TemporalStereoDepth.
+struct IMUFrame {
+    float baseline_m = 0.0f;                          // distance moved since last frame
+    float qw = 1.0f, qx = 0.0f, qy = 0.0f, qz = 0.0f; // orientation at capture
+    float timestamp_s = 0.0f;
+};
+
 } // namespace mec
