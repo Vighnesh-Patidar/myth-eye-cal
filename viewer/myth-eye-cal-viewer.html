@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Myth-Eye-Cal Viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0c10; overflow: hidden;
+    font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; color: #cdd6e0; }
+  #stats { position: fixed; top: 10px; left: 12px; white-space: pre;
+    text-shadow: 0 1px 2px #000; pointer-events: none; }
+  #stats b { color: #7fd5a0; }
+  #bar { position: fixed; top: 10px; right: 12px; }
+  #bar input { width: 220px; background: #161a22; color: #cdd6e0;
+    border: 1px solid #2a3140; border-radius: 4px; padding: 4px 6px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 5px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div id="stats"></div>
+<div id="bar">
+  <input id="url" value="ws://localhost:8080/pose"
+         title="WebSocket pose endpoint" />
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// 17-keypoint skeleton edges (§6.2), indices match kMediapipe33To17 order.
+const BONES = [
+  [0,1],[0,2],[1,3],[2,4],            // face
+  [5,6],                              // shoulders
+  [5,7],[7,9],[6,8],[8,10],           // arms
+  [5,11],[6,12],[11,12],              // torso + hips
+  [11,13],[13,15],[12,14],[14,16],    // legs
+];
+const N_KP = 17;
+
+// --- scene ---------------------------------------------------------------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0c10);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.01, 100);
+camera.position.set(2.4, 1.2, 3.2);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.9, 0);
+
+scene.add(new THREE.GridHelper(6, 12, 0x223044, 0x161d28));
+const hemi = new THREE.HemisphereLight(0xffffff, 0x202830, 1.1);
+scene.add(hemi);
+
+// confidence -> colour: red (low/predicted) -> yellow -> green (high).
+const tmpColor = new THREE.Color();
+function confColour(c) {
+  const h = Math.max(0, Math.min(1, c)) * 0.33; // 0=red .. 0.33=green
+  tmpColor.setHSL(h, 0.85, 0.55);
+  return tmpColor;
+}
+
+const jointGeo = new THREE.SphereGeometry(0.035, 14, 12);
+const joints = [];
+for (let i = 0; i < N_KP; i++) {
+  const m = new THREE.Mesh(jointGeo, new THREE.MeshStandardMaterial({ roughness: 0.5 }));
+  scene.add(m); joints.push(m);
+}
+const boneMat = BONES.map(() => new THREE.LineBasicMaterial());
+const bones = BONES.map((_, i) => {
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const l = new THREE.Line(g, boneMat[i]); scene.add(l); return l;
+});
+
+// map world (wx,wy,wz) [x right, y forward, z up] -> three (x, z_up, y)
+const P = (k) => new THREE.Vector3(k.wx, k.wz, k.wy);
+
+let latest = null, observerCount = 0, latencyMs = 0, source = 'demo';
+function applyPose(kps) {
+  for (let i = 0; i < N_KP; i++) {
+    const k = kps[i]; if (!k) continue;
+    const p = P(k);
+    joints[i].position.copy(p);
+    joints[i].material.color.copy(confColour(k.conf));
+  }
+  BONES.forEach((e, bi) => {
+    const a = P(kps[e[0]]), b = P(kps[e[1]]);
+    bones[bi].geometry.setFromPoints([a, b]);
+    boneMat[bi].color.copy(confColour(Math.min(kps[e[0]].conf, kps[e[1]].conf)));
+  });
+}
+
+// --- WebSocket ingest ----------------------------------------------------
+let ws = null;
+function connect(url) {
+  if (ws) { ws.onclose = null; ws.close(); }
+  source = 'connecting';
+  try { ws = new WebSocket(url); } catch { source = 'demo'; return; }
+  ws.onopen = () => { source = 'live'; };
+  ws.onclose = () => { source = 'demo'; };
+  ws.onerror = () => { source = 'demo'; };
+  ws.onmessage = (ev) => {
+    try {
+      const f = JSON.parse(ev.data);
+      if (f.type !== 'pose_frame') return;
+      latest = f.keypoints; observerCount = f.observer_count || 0;
+      latencyMs = Math.max(0, (Date.now()/1000 - f.timestamp_s) * 1000) | 0;
+    } catch {}
+  };
+}
+const urlInput = document.getElementById('url');
+urlInput.addEventListener('change', () => connect(urlInput.value));
+connect(urlInput.value);
+
+// --- demo fallback: synthetic walk so the page is never blank ------------
+const DEMO = [
+ [0,0,1.70],[0.03,0,1.73],[-0.03,0,1.73],[0.07,0,1.72],[-0.07,0,1.72],
+ [0.18,0,1.45],[-0.18,0,1.45],[0.20,0,1.15],[-0.20,0,1.15],[0.22,0,0.90],
+ [-0.22,0,0.90],[0.12,0,0.95],[-0.12,0,0.95],[0.13,0,0.52],[-0.13,0,0.52],
+ [0.13,0,0.05],[-0.13,0,0.05]];
+function demoPose(t) {
+  const dy = 0.5*Math.sin(t*0.4), bob = 0.03*Math.sin(t*4);
+  return DEMO.map((c,i) => ({ id:i, wx:c[0], wy:c[1]+dy, wz:c[2]+bob,
+    conf: 0.55 + 0.4*Math.abs(Math.sin(t + i)) }));
+}
+
+// --- loop ----------------------------------------------------------------
+const stats = document.getElementById('stats');
+const clock = new THREE.Clock();
+function tick() {
+  requestAnimationFrame(tick);
+  const t = clock.getElapsedTime();
+  const kps = (source === 'live' && latest) ? latest : demoPose(t);
+  applyPose(kps);
+  controls.update();
+  renderer.render(scene, camera);
+  const mc = kps.reduce((s,k)=>s+k.conf,0)/kps.length;
+  const col = source === 'live' ? '#7fd5a0' : '#d6a14a';
+  stats.innerHTML =
+    `<b>Myth-Eye-Cal</b>\n` +
+    `<span class="dot" style="background:${col}"></span>source: ${source}\n` +
+    `observers: ${source==='live'?observerCount:'—'}\n` +
+    `latency:   ${source==='live'?latencyMs+'ms':'—'}\n` +
+    `mean conf: ${mc.toFixed(2)}`;
+}
+tick();
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
