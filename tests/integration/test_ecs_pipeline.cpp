@@ -166,9 +166,77 @@ static void test_observer_broadcast() {
     CHECK_NEAR(unpack_metres(pl.keypoints[0].wz), 3.5, 0.02);
 }
 
+// §15.3: three observers at distinct viewpoints, each with anisotropic
+// (depth-ambiguous) error. The aggregator reconstructs each view ray from the
+// sender position and PoseFusionSystem fuses anisotropically, so the diverse
+// angles constrain all axes (geometry bonus) despite large per-view depth error.
+static void test_anisotropic_pipeline() {
+    mith::World world;
+    const mith::EntityId self = world.create_entity();
+    world.set_local(self);
+    world.add<mith::BehaviourStateComponent>(self);
+
+    KeypointAggregatorSystem aggregator;
+    PoseFusionSystem         fusion;
+    KalmanPredictSystem      predict;
+    RenderSerialiserSystem   render(nullptr);
+    mith::SystemScheduler sched;
+    sched.add(&aggregator);
+    sched.add(&fusion,  {"KeypointAggregatorSystem"});
+    sched.add(&predict, {"PoseFusionSystem"});
+    sched.add(&render,  {"KalmanPredictSystem"});
+
+    struct Cam { Vec3 pos; };
+    const Cam cams[3] = {{{4.0f, 0.5f, 1.0f}}, {{0.0f, 5.0f, 1.0f}}, {{-3.0f, -3.0f, 1.5f}}};
+    std::vector<sim::SyntheticObserver> observers = {
+        sim::SyntheticObserver(101, cams[0].pos, 0.02f, 0.12f, 0.85f),
+        sim::SyntheticObserver(102, cams[1].pos, 0.02f, 0.12f, 0.85f),
+        sim::SyntheticObserver(103, cams[2].pos, 0.02f, 0.12f, 0.85f),
+    };
+
+    const double dt = 1.0 / 240.0;
+    double sum_err = 0.0, max_err = 0.0;
+    int counted = 0;
+
+    for (int s = 0; s < 480; ++s) {
+        const double now = s * dt;
+        world.set_now(now);
+        world.user_neighbours.clear();
+        for (size_t i = 0; i < observers.size(); ++i)
+            world.user_neighbours.entries.push_back(
+                sim::pack_beacon(observers[i].observe(now), 3000u + static_cast<mith::NodeId>(i),
+                                 now, 0, LOSState::TRACKING, observers[i].viewpoint()));
+        sched.tick(world, dt);
+
+        if (now > 0.6) {
+            auto* pose = world.get<PoseStateComponent>(self);
+            CHECK(pose && pose->is_valid);
+            if (pose && pose->is_valid) {
+                auto gt = sim::ground_truth(now);
+                for (int k = 0; k < kNumKeypoints; ++k) {
+                    const double ex = pose->keypoints[k].wx - gt[k].wx;
+                    const double ey = pose->keypoints[k].wy - gt[k].wy;
+                    const double ez = pose->keypoints[k].wz - gt[k].wz;
+                    const double err = std::sqrt(ex * ex + ey * ey + ez * ez);
+                    if (err > max_err) max_err = err;
+                    sum_err += err; ++counted;
+                }
+            }
+        }
+    }
+    const double mean_err = sum_err / counted;
+    std::printf("anisotropic ECS pipeline: mean err = %.4f m, max = %.4f m\n",
+                mean_err, max_err);
+    // Per-view depth noise is 0.12m; diverse-angle anisotropic fusion + Kalman
+    // should bring the fused error well below that.
+    CHECK(mean_err < 0.06);
+    CHECK(max_err < 0.20);
+}
+
 int main() {
     test_consumer_pipeline();
     test_neighbour_filtering();
     test_observer_broadcast();
+    test_anisotropic_pipeline();
     RUN_TESTS_RETURN();
 }

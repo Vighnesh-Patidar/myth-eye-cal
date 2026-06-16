@@ -28,7 +28,9 @@ public:
         int updated = 0;
         for (int k = 0; k < kNumKeypoints; ++k) {
             WorldKeypoint fused;
-            if (MultiObserverFusion::fuse(agg->per_keypoint[k], fused)) {
+            // Anisotropic fusion (§15.3); isotropic observations (no view ray)
+            // are handled identically to the scalar path within the same call.
+            if (MultiObserverFusion::fuse_anisotropic(agg->per_keypoint[k], fused)) {
                 fused.id = static_cast<uint8_t>(k);
                 bank.trackers[k].update(fused);
                 ++updated;

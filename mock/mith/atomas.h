@@ -52,6 +52,10 @@ struct UserStateVector {
     NodeId   sender = 0;
     uint8_t  los_state = 0;   // sender's LOS, mirrored from its BehaviourState
     double   recv_time_s = 0.0;
+    // Sender's world position, from its replicated PositionComponent. Lets the
+    // receiver reconstruct each observation's view ray for anisotropic fusion
+    // (§15.3). Zero = unknown.
+    float    spx = 0.0f, spy = 0.0f, spz = 0.0f;
     std::array<uint8_t, 128> payload{};
 };
 struct UserNeighbourTable {

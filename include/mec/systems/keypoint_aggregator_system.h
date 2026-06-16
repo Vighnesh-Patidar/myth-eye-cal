@@ -5,10 +5,12 @@
 // and groups them per keypoint into the AggregatedObservationsComponent buffer.
 
 #include "mec/components/internal_components.h"
+#include "mec/math.h"
 #include "mec/types.h"
 #include "mith/atomas.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace mec {
@@ -46,9 +48,26 @@ public:
                 wk.wz = unpack_metres(pl.keypoints[i].wz);
                 wk.confidence = unpack_confidence(pl.keypoints[i].confidence);
                 // The 128-byte wire payload carries confidence but NOT the
-                // per-observation uncertainty (no room — §4.5). Reconstruct a
-                // nominal sigma from confidence so the fuser can weight it.
-                wk.uncertainty_r = 0.03f / std::max(wk.confidence, 0.05f);
+                // per-observation uncertainty (no room — §4.5). Reconstruct it
+                // from confidence. If the sender's position is known we also
+                // recover the view ray and use the anisotropic model (§15.3):
+                // sharp laterally, ambiguous along the ray. Otherwise isotropic.
+                const float cclamp = std::max(wk.confidence, 0.3f);
+                const float sp2 = usv.spx * usv.spx + usv.spy * usv.spy + usv.spz * usv.spz;
+                if (sp2 > 1e-12f) {
+                    Vec3 ray{wk.wx - usv.spx, wk.wy - usv.spy, wk.wz - usv.spz};
+                    const float rn = norm(ray);
+                    if (rn > 1e-6f) {
+                        ray = ray * (1.0f / rn);
+                        wk.rx = ray.x; wk.ry = ray.y; wk.rz = ray.z;
+                        wk.uncertainty_r = 0.02f / cclamp;     // lateral (sharp)
+                        wk.depth_uncertainty = 0.10f / cclamp; // along ray (ambiguous)
+                    } else {
+                        wk.uncertainty_r = 0.03f / std::max(wk.confidence, 0.05f);
+                    }
+                } else {
+                    wk.uncertainty_r = 0.03f / std::max(wk.confidence, 0.05f);
+                }
                 wk.timestamp_s = usv.recv_time_s;
                 agg.per_keypoint[i].push_back(wk);
             }

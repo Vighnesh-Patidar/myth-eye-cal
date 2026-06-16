@@ -5,6 +5,7 @@
 // mock mith runtime); used by the ECS demo and tests to inject synthetic
 // LOS-node observations into the UserNeighbourTable.
 
+#include "mec/math.h"
 #include "mec/types.h"
 #include "mith/atomas.h"
 
@@ -16,7 +17,7 @@ namespace mec::sim {
 inline mith::UserStateVector pack_beacon(
     const std::array<WorldKeypoint, kNumKeypoints>& kps,
     mith::NodeId sender, double now, uint16_t frame_id = 0,
-    LOSState los = LOSState::TRACKING) {
+    LOSState los = LOSState::TRACKING, Vec3 sender_pos = Vec3{}) {
     KeypointFramePayload pl;
     pl.keypoint_count = kNumKeypoints;
     pl.frame_id = frame_id;
@@ -31,6 +32,7 @@ inline mith::UserStateVector pack_beacon(
     usv.sender = sender;
     usv.los_state = static_cast<uint8_t>(los);
     usv.recv_time_s = now;
+    usv.spx = sender_pos.x; usv.spy = sender_pos.y; usv.spz = sender_pos.z;
     std::memcpy(usv.payload.data(), &pl, sizeof(pl));
     return usv;
 }

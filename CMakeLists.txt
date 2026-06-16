@@ -57,6 +57,7 @@ function(mec_add_test name path)
 endfunction()
 
 mec_add_test(test_multi_observer_fusion tests/unit/test_multi_observer_fusion.cpp)
+mec_add_test(test_anisotropic_fusion    tests/unit/test_anisotropic_fusion.cpp)
 mec_add_test(test_kalman_tracker        tests/unit/test_kalman_tracker.cpp)
 mec_add_test(test_keypoint_projector    tests/unit/test_keypoint_projector.cpp)
 mec_add_test(test_los_detector          tests/unit/test_los_detector.cpp)

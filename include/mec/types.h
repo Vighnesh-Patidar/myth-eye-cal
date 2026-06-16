@@ -46,11 +46,16 @@ struct PoseObservation {
 struct WorldKeypoint {
     uint8_t id = 0;
     float   wx = 0.0f, wy = 0.0f, wz = 0.0f; // world-frame position, metres
-    // 1-sigma uncertainty radius, metres. NOTE (§ Design Review upgrade): this
-    // is isotropic and cannot represent the anisotropic (depth-dominated) error
-    // of a monocular observation. v0.1 fuses it as a scalar weight; a future
-    // revision should carry a 3x3 covariance for proper orthogonal-axis fusion.
+    // 1-sigma lateral uncertainty radius, metres (perpendicular to the view
+    // ray). With the anisotropic fusion path (§15.3), the error along the ray
+    // is given separately by depth_uncertainty.
     float   uncertainty_r = 0.0f;
+    // §15.3 anisotropic model: unit view ray (camera -> point, world frame) and
+    // the 1-sigma error ALONG it. rx=ry=rz=0 means "no ray" -> fused
+    // isotropically using uncertainty_r. depth_uncertainty is typically >>
+    // uncertainty_r for a monocular / temporal-stereo observation.
+    float   rx = 0.0f, ry = 0.0f, rz = 0.0f;
+    float   depth_uncertainty = 0.0f;
     float   confidence = 0.0f;
     double  timestamp_s = 0.0;
 };
