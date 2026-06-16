@@ -861,11 +861,23 @@ baseline × optical-flow disparity, Kalman-fused with the lens prior). Two notes
   prior) instead of a bogus shallow depth, and rotation+translation recovers the
   correct depth (`test_temporal_stereo`).
 
-  **Open (a) — subject motion.** Disparity is still biased by the *subject's*
-  own image motion. Planned: gate/weight depth updates by estimated subject
-  motion or reconcile against the multi-observer fused estimate. Until then,
-  depth is most trustworthy for a near-static subject; the σ_imu=0.05 weighting
-  and lens-prior fusion bound the damage. Tracked as a v1.0 item alongside §15.3.
+  **Done (a) — subject-motion gating (epipolar).** `IMUFrame` now also carries
+  the unit translation direction (`td*`, body frame, from `IMUIntegrator`).
+  After de-rotation, a static point's flow must lie along the camera-translation
+  motion field `d = (-fx·Tx + (u-cx)·Tz, -fy·Ty + (v-cy)·Tz)`. `resolve()`
+  projects the de-rotated flow onto that epipolar direction: the parallel
+  component gives depth (`Z = baseline·|d| / parallax`, which also generalises
+  the old `f·b/disp` to non-lateral / focus-of-expansion motion), and a
+  perpendicular component above `Config::motion_gate_px` flags subject motion →
+  lens-prior fallback. Verified in `test_temporal_stereo` (off-epipolar flow
+  gated; on-epipolar flow recovers depth).
+
+  **Residual limitation.** Epipolar gating only rejects the subject-motion
+  component *perpendicular* to the epipolar line; subject motion *along* it is
+  geometrically indistinguishable from depth parallax and still biases depth.
+  Fully removing it needs cross-observer reconciliation (compare against the
+  multi-observer fused pose) — tracked as a v1.0 item alongside §15.3. The
+  gating also trusts the IMU translation direction; bad direction ⇒ bad gating.
 
 ### 15.8 IMU integrator: "reset each frame" clarified + drift caveat *(clarification + upgrade)*
 
@@ -893,6 +905,9 @@ velocity baseline). Two notes:
 
 ---
 
+*Document version: 0.3.7 — §15.7(a) epipolar subject-motion gating + general
+(focus-of-expansion) depth; residual: motion along the epipolar line needs
+cross-observer reconciliation*
 *Document version: 0.3.6 — §15.7 inter-frame de-rotation implemented (IMUFrame
 rotation delta + infinite-homography flow subtraction); subject-motion gating
 still open*

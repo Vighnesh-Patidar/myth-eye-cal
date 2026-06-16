@@ -77,14 +77,17 @@ From ARCHITECTURE.md §15. **Fixed** = already corrected in code + doc;
 - §15.6 **Scaffolding** — ECS on a mock `mith::` runtime; swap for the real
   submodule. Also: the wire payload carries no per-observation σ (no room), so
   the aggregator reconstructs σ ≈ 0.03/confidence — lossy.
-- §15.7 **Partly done** — inter-frame **de-rotation implemented** (IMUFrame
-  rotation delta + infinite-homography flow subtraction; `test_temporal_stereo`).
-  Still open: subject-motion gating, and NEON specialisation of LK.
+- §15.7 **Mostly done** — inter-frame **de-rotation** (b) + **epipolar
+  subject-motion gating** (a) implemented and tested (`test_temporal_stereo`);
+  depth also generalised to focus-of-expansion motion. Residual: subject motion
+  *along* the epipolar line needs cross-observer reconciliation. NEON LK still
+  deferred to Android.
 - §15.8 **Upgrade** — IMU velocity drift is unbounded without ZUPT / visual
   velocity fusion ("reset each frame" = reset displacement, not velocity).
 
-Highest-value accuracy work, in order: **§15.7(a)** subject-motion gating (the
-de-rotation half is done), **§15.8** (ZUPT), **§15.3** (anisotropic fusion).
+Highest-value accuracy work, in order: **§15.8** (ZUPT — bound IMU velocity
+drift), **§15.3** (anisotropic per-observation covariance fusion), then
+§15.7 cross-observer reconciliation (subject motion along the epipolar line).
 
 ## Suggested v0.3 next steps
 
