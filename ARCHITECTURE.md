@@ -1010,6 +1010,31 @@ giving ENU metres from the common origin (matching the rotation-vector ENU
 orientation). GPS is coarse (~3-10 m) and poor indoors, so manual pins remain
 better for room-scale demos; GPS suits outdoor / large layouts.
 
+### 15.13 Real mith-atomas comms integration *(feature, behind a flag)*
+
+`MithRuntime` (`transport/mith_runtime.{h,cpp}`) backs the user beacon channel
+with the real `mith-atomas` runtime instead of the UDP stopgap (§15.10). It uses
+**both** mith channels as designed (docs/MITH_INTEGRATION.md): the auto
+`BeaconSystem` replicates this node's `Position` + `BehaviourState` (LOS), our
+128-byte keypoint frame rides a `CUSTOM` `Message`, and `poll()` drains received
+payloads and pairs each with its sender's neighbour-table entry (position + LOS)
+— emitting the same `BeaconObservation` the fusion path already consumes, so the
+pipeline is unchanged. It also gets identity, multicast discovery, and clock sync
+for free. Driven single-threaded from the camera thread (mith's `EntityRegistry`
+is not thread-safe).
+
+**Note — two ECS layers coexist by design.** mith is **N=1-per-World** (one self
+entity), so it owns *comms / clock / identity / neighbour state*; our multi-
+observation **fusion** ECS (aggregator buffers, Kalman bank, fused pose) stays on
+the lightweight `mock/mith` World/scheduler. The mock is no longer a stand-in for
+transport — it's our app's fusion runtime; mith is the coordination substrate.
+
+**Status:** written against the documented mith API and wired behind the CMake
+option `MEC_USE_MITH` (default OFF → UDP stopgap, which builds + runs on-device
+today). Enabling needs the submodule at `third_party/mith-atomas`; not yet
+compiled here. On Android the existing Kotlin `MulticastLock` is required for
+inbound multicast delivery.
+
 With a shared frame, the anisotropic fusion (§15.3) triangulates: each phone is
 sharp in its image plane and uncertain along its ray, so phones at different
 angles pin down each other's depth → real 3D, including for a phone with no line

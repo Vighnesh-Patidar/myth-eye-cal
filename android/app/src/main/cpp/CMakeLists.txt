@@ -27,8 +27,18 @@ add_library(mec_jni SHARED
 
 target_include_directories(mec_jni PRIVATE
     ${REPO}/include
-    ${REPO}/mock            # mock MithAtomas — replace with the real submodule
+    ${REPO}/mock            # mock MithAtomas ECS (World/scheduler shim, §15.6)
 )
 
 find_library(log-lib log)
 target_link_libraries(mec_jni ${log-lib})
+
+# Real mith-atomas comms (§15.13). Off by default (UDP stopgap is used).
+# Turn on with -DMEC_USE_MITH=ON once the submodule is at third_party/mith-atomas.
+option(MEC_USE_MITH "Use real mith-atomas for the beacon channel" OFF)
+if(MEC_USE_MITH)
+    add_subdirectory(${REPO}/third_party/mith-atomas ${CMAKE_BINARY_DIR}/mith-atomas)
+    target_sources(mec_jni PRIVATE ${REPO}/src/transport/mith_runtime.cpp)
+    target_link_libraries(mec_jni mith::mith)
+    target_compile_definitions(mec_jni PRIVATE MEC_USE_MITH=1)
+endif()

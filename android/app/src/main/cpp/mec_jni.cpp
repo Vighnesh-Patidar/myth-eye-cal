@@ -17,7 +17,11 @@
 #include "mec/systems/keypoint_aggregator_system.h"
 #include "mec/systems/pose_fusion_system.h"
 #include "mec/systems/render_serialiser_system.h"
-#include "mec/transport/udp_beacon_transport.h"
+#ifdef MEC_USE_MITH
+#include "mec/transport/mith_runtime.h"      // real mith-atomas backing
+#else
+#include "mec/transport/udp_beacon_transport.h" // UDP stopgap
+#endif
 #include "mith/atomas.h"
 
 #include <android/log.h>
@@ -44,7 +48,11 @@ struct Context {
     mec::IMUIntegrator imu;
     mec::KeypointProjector projector;
     mec::CameraIntrinsics intr;
-    mec::UdpBeaconTransport transport;       // multi-device beacon exchange (§15.10)
+#ifdef MEC_USE_MITH
+    mec::MithRuntime transport;              // real mith-atomas (§15.13)
+#else
+    mec::UdpBeaconTransport transport;       // UDP stopgap (§15.10)
+#endif
     mec::Vec3 node_pos{};                     // manual co-localization pin (position)
     mec::Quat node_orientation{};             // absolute orientation (rotation-vector, ENU)
     uint64_t node_id = 0;
@@ -83,11 +91,19 @@ Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv*, jobject, jint width, jint hei
     else
         LOGI("WebSocket render server on ws://0.0.0.0:%d/pose", c->server.port());
 
+#ifdef MEC_USE_MITH
+    (void)beacon_port;
+    if (c->transport.start(/*swarm_id=*/42, /*group=*/"239.10.20.30", /*port=*/47474))
+        LOGI("mith-atomas runtime up (multicast 239.10.20.30:47474)");
+    else
+        LOGI("mith-atomas runtime failed to start");
+#else
     if (!c->transport.start(static_cast<uint16_t>(beacon_port), c->node_id))
         LOGI("UDP beacon transport failed to bind port %d", beacon_port);
     else
         LOGI("UDP beacon transport on udp/%d (node %llu)", beacon_port,
              static_cast<unsigned long long>(c->node_id));
+#endif
     return reinterpret_cast<jlong>(c);
 }
 
@@ -213,6 +229,9 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
         c->transport.broadcast(local.payload, static_cast<uint8_t>(mec::LOSState::TRACKING),
                                c->node_pos.x, c->node_pos.y, c->node_pos.z);
     }
+#ifdef MEC_USE_MITH
+    c->transport.tick(); // drive mith comms: flush sends, drain receives
+#endif
     for (const mec::BeaconObservation& rx : c->transport.poll()) {
         mith::UserStateVector usv;
         usv.sender = rx.sender;
