@@ -17,6 +17,7 @@
 #include "mec/systems/keypoint_aggregator_system.h"
 #include "mec/systems/pose_fusion_system.h"
 #include "mec/systems/render_serialiser_system.h"
+#include "mec/transport/udp_beacon_transport.h"
 #include "mith/atomas.h"
 
 #include <android/log.h>
@@ -42,6 +43,9 @@ struct Context {
     mec::IMUIntegrator imu;
     mec::KeypointProjector projector;
     mec::CameraIntrinsics intr;
+    mec::UdpBeaconTransport transport;       // multi-device beacon exchange (§15.10)
+    mec::Vec3 node_pos{};                     // manual co-localization pin
+    uint64_t node_id = 0;
     std::vector<uint8_t> prev_y, cur_y;
     bool have_prev = false;
     uint32_t frame_id = 0;
@@ -57,8 +61,10 @@ inline Context* ctx(jlong h) { return reinterpret_cast<Context*>(h); }
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv*, jobject, jint width, jint height, jint port) {
+Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv*, jobject, jint width, jint height,
+                                          jint port, jlong node_id, jint beacon_port) {
     Context* c = new Context(width, height);
+    c->node_id = static_cast<uint64_t>(node_id);
     c->self = c->world.create_entity();
     c->world.set_local(c->self);
     c->world.add<mith::BehaviourStateComponent>(c->self);
@@ -68,12 +74,23 @@ Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv*, jobject, jint width, jint hei
     c->sched.add(&c->predict, {"PoseFusionSystem"});
     c->sched.add(&c->render, {"KalmanPredictSystem"});
 
-    if (!c->server.start(static_cast<uint16_t>(port))) {
+    if (!c->server.start(static_cast<uint16_t>(port)))
         LOGI("WebSocket server failed to bind port %d", port);
-    } else {
+    else
         LOGI("WebSocket render server on ws://0.0.0.0:%d/pose", c->server.port());
-    }
+
+    if (!c->transport.start(static_cast<uint16_t>(beacon_port), c->node_id))
+        LOGI("UDP beacon transport failed to bind port %d", beacon_port);
+    else
+        LOGI("UDP beacon transport on udp/%d (node %llu)", beacon_port,
+             static_cast<unsigned long long>(c->node_id));
     return reinterpret_cast<jlong>(c);
+}
+
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeSetNodePose(JNIEnv*, jobject, jlong h,
+                                                 jfloat x, jfloat y, jfloat z) {
+    ctx(h)->node_pos = mec::Vec3{x, y, z};
 }
 
 JNIEXPORT void JNICALL
@@ -146,7 +163,7 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
 
     // Project to the world frame (node pinned at origin; orientation from IMU).
     mec::NodePose np;
-    np.position = mec::Vec3{0.0f, 0.0f, 0.0f};
+    np.position = c->node_pos; // manual co-localization pin (origin by default)
     np.orientation = c->imu.orientation();
     std::array<mec::WorldKeypoint, mec::kNumKeypoints> kps{};
     for (int i = 0; i < mec::kNumKeypoints; ++i) {
@@ -155,11 +172,28 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
         kps[i] = c->projector.project(kp, c->intr, np, ts);
     }
 
-    // Feed as a single LOS observer, then run the fusion+render pipeline.
+    // Multi-observer feed (§15.10): our own observation (when a pose is
+    // detected) is fused locally AND broadcast to neighbours; neighbours'
+    // beacons are received and fused too — so a phone with no line of sight
+    // still renders the pose from others (through-wall).
     c->world.user_neighbours.clear();
-    c->world.user_neighbours.entries.push_back(
-        mec::sim::pack_beacon(kps, 1, ts, static_cast<uint16_t>(c->frame_id),
-                              mec::LOSState::TRACKING, np.position));
+    if (kc > 0) {
+        const mith::UserStateVector local = mec::sim::pack_beacon(
+            kps, c->node_id, ts, static_cast<uint16_t>(c->frame_id),
+            mec::LOSState::TRACKING, c->node_pos);
+        c->world.user_neighbours.entries.push_back(local);
+        c->transport.broadcast(local.payload, static_cast<uint8_t>(mec::LOSState::TRACKING),
+                               c->node_pos.x, c->node_pos.y, c->node_pos.z);
+    }
+    for (const mec::BeaconObservation& rx : c->transport.poll()) {
+        mith::UserStateVector usv;
+        usv.sender = rx.sender;
+        usv.los_state = rx.los_state;
+        usv.recv_time_s = ts; // stamp on arrival (no cross-device clock sync)
+        usv.spx = rx.spx; usv.spy = rx.spy; usv.spz = rx.spz;
+        usv.payload = rx.payload;
+        c->world.user_neighbours.entries.push_back(usv);
+    }
     c->world.set_now(ts);
     c->server.poll_events(0);
     double dt = ts - c->last_ts_s;

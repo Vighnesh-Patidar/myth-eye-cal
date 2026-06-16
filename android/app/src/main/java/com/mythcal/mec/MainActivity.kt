@@ -1,11 +1,14 @@
 package com.mythcal.mec
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.TextView
@@ -34,7 +37,9 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
     private val width = 640
     private val height = 480
     private val port = 8080
+    private val beaconPort = 8079
     private val lensPriorM = 2.5f
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     private val frames = AtomicLong(0)
     private val lastLandmarks = AtomicInteger(0)
@@ -72,7 +77,18 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
     private fun maybeStart() {
         if (started || !surfaceReady || !permissionGranted) return
         started = true
-        handle = MecNative.nativeInit(width, height, port)
+
+        // Allow the Wi-Fi driver to deliver UDP broadcast beacons (§15.10).
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        multicastLock = wifi.createMulticastLock("mec-beacon").apply {
+            setReferenceCounted(true); acquire()
+        }
+
+        @Suppress("HardwareIds")
+        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "mec"
+        val nodeId = (androidId.hashCode().toLong() shl 20) xor (System.nanoTime() and 0xFFFFF)
+
+        handle = MecNative.nativeInit(width, height, port, nodeId, beaconPort)
         pose = PoseEstimator(this)
         camera = CameraController(this, width, height, this).also { cc ->
             cc.intrinsics().let { MecNative.nativeSetIntrinsics(handle, it.fx, it.fy, it.cx, it.cy) }
@@ -113,6 +129,7 @@ class MainActivity : AppCompatActivity(), CameraController.FrameListener {
         ui.removeCallbacks(statusTick)
         camera?.stop(); imu?.stop(); pose?.close()
         if (handle != 0L) { MecNative.nativeShutdown(handle); handle = 0 }
+        multicastLock?.let { if (it.isHeld) it.release() }; multicastLock = null
     }
 
     private fun localIpv4(): String? {

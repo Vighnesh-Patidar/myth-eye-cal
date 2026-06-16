@@ -4,10 +4,13 @@ package com.mythcal.mec
 object MecNative {
     init { System.loadLibrary("mec_jni") }
 
-    /** Create the pipeline; starts the WebSocket render server. Returns a handle. */
-    external fun nativeInit(width: Int, height: Int, port: Int): Long
+    /** Create the pipeline; starts the WS render server + UDP beacon transport. */
+    external fun nativeInit(width: Int, height: Int, port: Int, nodeId: Long, beaconPort: Int): Long
 
     external fun nativeSetIntrinsics(handle: Long, fx: Float, fy: Float, cx: Float, cy: Float)
+
+    /** Manual co-localization pin: this node's world position (§15.10). */
+    external fun nativeSetNodePose(handle: Long, x: Float, y: Float, z: Float)
 
     /** One IMU sample (specific force incl. gravity, rad/s gyro, dt seconds). */
     external fun nativeOnImuSample(

@@ -22,6 +22,7 @@ add_library(mec_jni SHARED
     ${REPO}/src/observer/temporal_stereo_depth.cpp
     ${REPO}/src/observer/imu_integrator.cpp
     ${REPO}/src/render/websocket_render_server.cpp
+    ${REPO}/src/transport/udp_beacon_transport.cpp
 )
 
 target_include_directories(mec_jni PRIVATE
