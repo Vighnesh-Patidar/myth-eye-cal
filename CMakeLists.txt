@@ -25,6 +25,7 @@ add_library(mec_core
   src/observer/temporal_stereo_depth.cpp
   src/observer/imu_integrator.cpp
   src/render/websocket_render_server.cpp
+  src/transport/udp_beacon_transport.cpp
 )
 target_include_directories(mec_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -66,6 +67,7 @@ mec_add_test(test_temporal_stereo       tests/unit/test_temporal_stereo.cpp)
 mec_add_test(test_imu_integrator        tests/unit/test_imu_integrator.cpp)
 mec_add_test(test_fusion_pipeline       tests/integration/test_fusion_pipeline.cpp)
 mec_add_test(test_websocket_server      tests/integration/test_websocket_server.cpp)
+mec_add_test(test_udp_transport         tests/integration/test_udp_transport.cpp)
 
 # ECS test additionally needs the mock MithAtomas runtime.
 add_executable(test_ecs_pipeline tests/integration/test_ecs_pipeline.cpp)
