@@ -194,7 +194,7 @@ struct PoseObservation {
     std::array<Keypoint, 33>  keypoints;   // unused slots zeroed
     uint8_t                   keypoint_count;
     uint32_t                  frame_id;
-    float                     timestamp_s; // MithAtomas synced clock
+    double                    timestamp_s; // MithAtomas synced clock (§15.2: double, not float)
 };
 
 class PoseEstimatorBackend {
@@ -316,9 +316,9 @@ namespace mec {
 struct WorldKeypoint {
     uint8_t  id;
     float    wx, wy, wz;      // world-frame position, metres
-    float    uncertainty_r;   // 1-sigma uncertainty radius, metres
+    float    uncertainty_r;   // 1-sigma uncertainty radius, metres (§15.3: isotropic — limitation)
     float    confidence;
-    float    timestamp_s;
+    double   timestamp_s;     // §15.2: double, not float
 };
 
 } // namespace mec
@@ -331,20 +331,30 @@ The projected `WorldKeypoint` array is serialised into a `UserStateVector` paylo
 ```cpp
 namespace mec {
 
-// Fits in UserStateVector's 128-byte payload
-// 17 keypoints × 7 bytes = 119 bytes + 9 bytes header = 128 bytes
+// Fits in UserStateVector's 128-byte payload (verified by static_assert).
+//   header        : schema_id(2) + keypoint_count(1) + frame_id(2) +
+//                   timestamp_ms(4)                              =  9 bytes
+//   keypoints[17] : 17 × (int16 wx,wy,wz [6] + uint8 conf [1])   = 119 bytes
+//                                                          total = 128 bytes
+//
+// REVISION (§15.1): keypoint `id` is now IMPLICIT (array index 0..16) — an
+// explicit per-keypoint id pushed the struct to 8 B/kp (136 B + 11 B header =
+// 147 B), which overflowed the 128-byte budget and failed the static_assert.
+// `frame_id` is uint16 (circular, wraps ~36 min @30fps); the timestamp is a
+// uint32 millisecond count, not float (§15.2).
+#pragma pack(push, 1)
 struct KeypointFramePayload {
-    uint16_t schema_id    = MEC_SCHEMA_ID;   // 0x4D45 "ME"
+    uint16_t schema_id = MEC_SCHEMA_ID;   // 0x4D45 "ME"
     uint8_t  keypoint_count;
-    uint32_t frame_id;
-    float    timestamp_s;
+    uint16_t frame_id;
+    uint32_t timestamp_ms;                // ms since session epoch (49-day range)
     struct PackedKeypoint {
-        uint8_t  id;
-        int16_t  wx, wy, wz;    // fixed point, 1cm resolution, range ±327m
-        uint8_t  confidence;    // 0-255 mapped from [0,1]
+        int16_t wx, wy, wz;    // fixed point, 1cm resolution, range ±327m
+        uint8_t confidence;    // 0-255 mapped from [0,1]
     } keypoints[17];
 };
-static_assert(sizeof(KeypointFramePayload) <= 128);
+#pragma pack(pop)
+static_assert(sizeof(KeypointFramePayload) == 128);
 
 } // namespace mec
 ```
@@ -725,6 +735,64 @@ Three repos. Three layers. One system that renders a live human pose through a w
 
 ---
 
+## 15. Design Review & Revisions
+
+Findings from the v0.1 implementation pass. Each was reflected back into the
+structs above; the rationale is recorded here.
+
+### 15.1 KeypointFramePayload overflowed its 128-byte budget *(critical, fixed)*
+
+As originally written the struct was **147 bytes**, not 128: the header was 11
+bytes (`uint32 frame_id` + `float timestamp`) and each `PackedKeypoint` was 8
+bytes (explicit `uint8 id` + 3×`int16` + `uint8`), so `17 × 8 + 11 = 147`. The
+`static_assert(... <= 128)` would have failed to compile.
+
+**Fix:** drop the explicit per-keypoint `id` (it is the array index 0..16),
+shrink `frame_id` to `uint16`, and carry the timestamp as a `uint32`
+millisecond count. New layout is exactly **128 bytes** (9 B header + 17×7 B),
+and the assert is tightened to `== 128`. `frame_id` is treated as circular
+(wraps ~36 min at 30 fps); receivers compare modulo-2¹⁶.
+
+### 15.2 `float` timestamps cannot hold a synced clock *(critical, fixed)*
+
+`PoseObservation`, `WorldKeypoint`, and the wire payload used `float
+timestamp_s`. `float32` has ~7 significant digits, so an absolute synced-clock
+value (~1.7×10⁹ s) is only representable to ~128 s resolution — and even a
+session-relative value degrades to ~ms resolution after a few hours. With a
+150 ms fusion window (§5.1) and a 100 ms latency budget (§7), this silently
+corrupts windowing and ordering.
+
+**Fix:** in-memory timestamps are now `double` seconds. The wire payload uses
+`uint32` milliseconds since a session epoch (1 ms resolution, 49-day range) to
+stay within the 4-byte field.
+
+### 15.3 Scalar `uncertainty_r` cannot model anisotropic depth error *(upgrade, deferred)*
+
+§5.2's "geometry bonus" states that observers at orthogonal angles contribute
+independent depth information. A single **isotropic scalar** `uncertainty_r`
+per keypoint cannot express that — monocular / temporal-stereo error is large
+*along the camera ray* and small *laterally*, an anisotropic covariance the
+scalar collapses. The v0.1 fuser is therefore a correct scalar inverse-variance
+weighted mean, but it does **not** realise the per-axis geometry bonus as
+described.
+
+**Planned upgrade (post-v0.1):** carry a per-observation 3×3 covariance (or at
+minimum an along-ray vs lateral σ split) and fuse with the full information
+form `Σ Σᵢ⁻¹` / `Σ Σᵢ⁻¹ xᵢ`. The `WorldKeypoint` API and `MultiObserverFusion`
+are documented as the extension points. Tracked as a v1.0 accuracy item.
+
+### 15.4 33→17 keypoint mapping was unspecified *(minor, fixed)*
+
+The doc defaults the estimator to MediaPipe's 33 landmarks (§4.2) but fuses and
+broadcasts 17 (§4.5, §6.2) without stating the mapping. The implementation adds
+an explicit `kMediapipe33To17` index table (`keypoint_projector.h`). Note one
+consequence of the strict 17-slot skeleton: only one ankle survives the cut
+(slot 16); a future revision may prefer 18 slots or re-pack the face points.
+
+---
+
+*Document version: 0.3.1 — Design review (§15): 128-byte payload fix, double
+timestamps, anisotropic-fusion upgrade noted, 33→17 mapping specified*
 *Document version: 0.3.0 — Thundercam dependency removed; Camera2 direct capture; self-contained*
 *Authors: Vighnesh Patidar*
 *Depends on: mith-atomas v1.0+*
