@@ -849,15 +849,23 @@ baseline × optical-flow disparity, Kalman-fused with the lens prior). Two notes
   *(a)* the **subject is moving** — a keypoint's optical flow is camera parallax
   *plus* the subject's own image motion, so `depth = f·b/disparity` is biased;
   *(b)* **inter-frame camera rotation** produces flow unrelated to depth and must
-  be de-rotated first. The current `IMUFrame` carries only a single orientation
-  quaternion and a scalar baseline — not the inter-frame *rotation delta* needed
-  to subtract rotational flow. **Recommended upgrade:** extend `IMUFrame` with
-  the prev→curr rotation (or pass both orientations), warp the previous frame by
-  the rotation-at-infinity before LK, and gate/weight depth updates by estimated
-  subject motion (or reconcile against the multi-observer fused estimate). Until
-  then, depth is most trustworthy when the phone translates and the subject is
-  near-static; the σ_imu=0.05 weighting and lens-prior fusion bound the damage.
-  Tracked as a v1.0 accuracy item alongside §15.3.
+  be de-rotated first.
+
+  **Done (b) — inter-frame de-rotation.** `IMUFrame` now carries the inter-frame
+  rotation delta (`dqw..dqz`, body frame) computed by `IMUIntegrator::consume()`;
+  `resolve()` takes full `CameraIntrinsics` and, per keypoint, predicts the
+  rotation-only displacement via the infinite homography `K·R·K⁻¹`, subtracts it
+  from the measured LK flow, and uses only the translational residual for depth.
+  `Config::cam_to_body` brings the body-frame rotation into the camera frame.
+  Verified: a pure camera rotation now yields sub-threshold residual (→ lens
+  prior) instead of a bogus shallow depth, and rotation+translation recovers the
+  correct depth (`test_temporal_stereo`).
+
+  **Open (a) — subject motion.** Disparity is still biased by the *subject's*
+  own image motion. Planned: gate/weight depth updates by estimated subject
+  motion or reconcile against the multi-observer fused estimate. Until then,
+  depth is most trustworthy for a near-static subject; the σ_imu=0.05 weighting
+  and lens-prior fusion bound the damage. Tracked as a v1.0 item alongside §15.3.
 
 ### 15.8 IMU integrator: "reset each frame" clarified + drift caveat *(clarification + upgrade)*
 
@@ -885,6 +893,9 @@ velocity baseline). Two notes:
 
 ---
 
+*Document version: 0.3.6 — §15.7 inter-frame de-rotation implemented (IMUFrame
+rotation delta + infinite-homography flow subtraction); subject-motion gating
+still open*
 *Document version: 0.3.5 — IMUIntegrator strapdown dead-reckoning (§15.8); all
 v0.2 observer-pipeline algorithms now done + tested on Linux (Android sampling,
 MediaPipe, and JNI bridge remain)*
