@@ -679,7 +679,8 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
 - [ ] MediaPipe Pose integration (Android, Tasks API) — needs Android
 - [x] `TemporalStereoDepth` — Lucas-Kanade optical flow (portable C++17
       reference, no OpenCV; NEON deferred to Android build, §15.7)
-- [ ] `IMUIntegrator` — Android SensorManager 200Hz, dead reckoning — needs Android
+- [x] `IMUIntegrator` — strapdown dead-reckoning math done + tested on Linux
+      (§15.8); only the SensorManager 200Hz sampling source needs Android
 - [x] Kalman fusion of lens prior + IMU depth per keypoint
 - [x] `KeypointProjector` with camera intrinsics (done in v0.1)
 - [x] `LOSDetector` with hysteresis (§3.2 thresholds)
@@ -858,8 +859,35 @@ baseline × optical-flow disparity, Kalman-fused with the lens prior). Two notes
   near-static; the σ_imu=0.05 weighting and lens-prior fusion bound the damage.
   Tracked as a v1.0 accuracy item alongside §15.3.
 
+### 15.8 IMU integrator: "reset each frame" clarified + drift caveat *(clarification + upgrade)*
+
+`IMUIntegrator` (`imu_integrator.{h,cpp}`) is a strapdown dead-reckoning
+integrator: exponential-map gyro integration for orientation, gravity-
+compensated accel (`a = R·f + g_world`) double-integrated for displacement.
+Tested on Linux with synthetic samples (90° yaw, gravity rejection, constant-
+velocity baseline). Two notes:
+
+- **"Reset each camera frame" (§4.3/§13) means reset *displacement*, not
+  *velocity*.** Zeroing velocity each frame would report a zero baseline for a
+  phone in steady motion (constant velocity ⇒ zero accel ⇒ no displacement
+  rebuilds) — exactly the case temporal stereo needs. So `consume()` resets the
+  displacement accumulator (bounding position drift across frames, the §13
+  intent) but carries velocity and orientation as continuous physical state.
+- **Velocity drift is unbounded without an absolute reference (limitation).**
+  Resetting displacement bounds *position* drift, but accelerometer bias still
+  integrates into *velocity*, which then biases every subsequent baseline. Over
+  a 30-40 ms inter-frame interval the error is small; over a long session it
+  grows. **Recommended upgrade:** zero-velocity updates (ZUPT) when the device
+  is detected stationary, and/or fusing the visual optical-flow scale back into
+  velocity — pairs naturally with the §15.7 de-rotation work. The SensorManager
+  200 Hz sampling source is the only Android-specific piece still deferred; the
+  integration math here is the whole algorithm.
+
 ---
 
+*Document version: 0.3.5 — IMUIntegrator strapdown dead-reckoning (§15.8); all
+v0.2 observer-pipeline algorithms now done + tested on Linux (Android sampling,
+MediaPipe, and JNI bridge remain)*
 *Document version: 0.3.4 — TemporalStereoDepth + pyramidal Lucas-Kanade (§15.7,
 portable C++17, no OpenCV); v0.2 depth/projection/LOS algorithms done on Linux*
 *Document version: 0.3.3 — §9 ECS systems + LOSDetector stubbed against a mock
