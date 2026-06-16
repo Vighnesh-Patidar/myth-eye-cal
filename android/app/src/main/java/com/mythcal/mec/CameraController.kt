@@ -10,7 +10,7 @@ import android.hardware.camera2.CaptureRequest
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Size
+import android.view.Surface
 
 /**
  * Camera2 capture (§4.1) — no intermediate framework. Streams YUV_420_888 at a
@@ -52,8 +52,9 @@ class CameraController(
         return Intrinsics(fx, fy, width / 2f, height / 2f)
     }
 
+    /** @param previewSurface optional on-screen preview target (SurfaceView). */
     @Suppress("MissingPermission") // caller must hold CAMERA permission
-    fun start() {
+    fun start(previewSurface: Surface? = null) {
         thread = HandlerThread("mec-camera").also { it.start() }
         handler = Handler(thread!!.looper)
         cameraId = backCameraId()
@@ -74,13 +75,15 @@ class CameraController(
         cm.openCamera(cameraId, object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
                 device = camera
-                val surface = reader!!.surface
+                val targets = ArrayList<Surface>()
+                previewSurface?.let { targets.add(it) }
+                targets.add(reader!!.surface)
                 val req = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                    addTarget(surface)
+                    targets.forEach { addTarget(it) }
                     set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
                 }
                 @Suppress("DEPRECATION")
-                camera.createCaptureSession(listOf(surface),
+                camera.createCaptureSession(targets,
                     object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
                         override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
                             session.setRepeatingRequest(req.build(), null, handler)

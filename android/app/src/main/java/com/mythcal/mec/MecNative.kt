@@ -26,5 +26,6 @@ object MecNative {
 
     external fun nativePoll(handle: Long)
     external fun nativeServerPort(handle: Long): Int
+    external fun nativeClientCount(handle: Long): Int
     external fun nativeShutdown(handle: Long)
 }

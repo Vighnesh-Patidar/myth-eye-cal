@@ -101,6 +101,11 @@ Java_com_mythcal_mec_MecNative_nativeServerPort(JNIEnv*, jobject, jlong h) {
     return ctx(h)->server.port();
 }
 
+JNIEXPORT jint JNICALL
+Java_com_mythcal_mec_MecNative_nativeClientCount(JNIEnv*, jobject, jlong h) {
+    return static_cast<jint>(ctx(h)->server.client_count());
+}
+
 // landmarks: float[count*4] = (x_norm, y_norm, z, visibility) per MediaPipe.
 JNIEXPORT jstring JNICALL
 Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
