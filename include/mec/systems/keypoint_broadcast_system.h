@@ -9,27 +9,27 @@
 #include "mec/components/los_state_component.h"
 #include "mec/components/observer_metrics_component.h"
 #include "mec/observer/keypoint_projector.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 #include <array>
 #include <cstring>
 
 namespace mec {
 
-class KeypointBroadcastSystem : public mith::System {
+class KeypointBroadcastSystem : public mec::System {
 public:
     const char* name() const override { return "KeypointBroadcastSystem"; }
     double      rate_hz() const override { return 25.0; }
 
-    void update(mith::World& w, double) override {
-        const mith::EntityId e = w.local();
+    void update(mec::World& w, double) override {
+        const mec::EntityId e = w.local();
         auto* los = w.get<LOSStateComponent>(e);
         if (!los || los->state != LOSState::TRACKING) return; // idle unless LOS
 
         auto* obsc = w.get<LatestObservationComponent>(e);
         auto* cam  = w.get<CameraIntrinsicsComponent>(e);
-        auto* pos  = w.get<mith::PositionComponent>(e);
-        auto* ori  = w.get<mith::OrientationComponent>(e);
+        auto* pos  = w.get<mec::PositionComponent>(e);
+        auto* ori  = w.get<mec::OrientationComponent>(e);
         if (!obsc || !cam || !pos || !ori) return;
 
         KeypointProjector proj;

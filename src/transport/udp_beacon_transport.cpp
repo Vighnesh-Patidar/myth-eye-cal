@@ -15,12 +15,22 @@ namespace {
 struct Packet {
     uint32_t magic;
     uint64_t sender;
+    uint8_t  kind;        // BeaconKind
     uint8_t  los_state;
     float    spx, spy, spz;
     uint8_t  payload[128];
 };
 #pragma pack(pop)
-static_assert(sizeof(Packet) == 4 + 8 + 1 + 12 + 128, "unexpected Packet packing");
+static_assert(sizeof(Packet) == 4 + 8 + 1 + 1 + 12 + 128, "unexpected Packet packing");
+
+void send_packet(int fd, uint16_t dest_port, uint32_t dest_addr, const Packet& p) {
+    if (fd < 0) return;
+    sockaddr_in dst{};
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(dest_port);
+    dst.sin_addr.s_addr = dest_addr;
+    ::sendto(fd, &p, sizeof(p), 0, reinterpret_cast<sockaddr*>(&dst), sizeof(dst));
+}
 
 } // namespace
 
@@ -66,15 +76,31 @@ void UdpBeaconTransport::broadcast(const std::array<uint8_t, 128>& payload, uint
     Packet p{};
     p.magic = kUdpBeaconMagic;
     p.sender = self_;
+    p.kind = kBeaconData;
     p.los_state = los_state;
     p.spx = spx; p.spy = spy; p.spz = spz;
     std::memcpy(p.payload, payload.data(), 128);
+    send_packet(fd_, dest_port_, dest_addr_, p);
+}
 
-    sockaddr_in dst{};
-    dst.sin_family = AF_INET;
-    dst.sin_port = htons(dest_port_);
-    dst.sin_addr.s_addr = dest_addr_;
-    ::sendto(fd_, &p, sizeof(p), 0, reinterpret_cast<sockaddr*>(&dst), sizeof(dst));
+void UdpBeaconTransport::announce_presence(uint8_t los_state, float spx, float spy, float spz) {
+    if (fd_ < 0) return;
+    Packet p{};
+    p.magic = kUdpBeaconMagic;
+    p.sender = self_;
+    p.kind = kBeaconPresence;
+    p.los_state = los_state;
+    p.spx = spx; p.spy = spy; p.spz = spz;
+    send_packet(fd_, dest_port_, dest_addr_, p); // empty payload: discovery only
+}
+
+void UdpBeaconTransport::scan() {
+    if (fd_ < 0) return;
+    Packet p{};
+    p.magic = kUdpBeaconMagic;
+    p.sender = self_;
+    p.kind = kBeaconProbe;
+    send_packet(fd_, dest_port_, dest_addr_, p); // "request header": magic + kBeaconProbe
 }
 
 std::vector<BeaconObservation> UdpBeaconTransport::poll() {
@@ -88,6 +114,7 @@ std::vector<BeaconObservation> UdpBeaconTransport::poll() {
         if (p.sender == self_) continue; // our own broadcast echoed back
         BeaconObservation o;
         o.sender = p.sender;
+        o.kind = p.kind;
         o.los_state = p.los_state;
         o.spx = p.spx; o.spy = p.spy; o.spz = p.spz;
         std::memcpy(o.payload.data(), p.payload, 128);

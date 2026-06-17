@@ -12,8 +12,8 @@ android/app/build/
 android/app/.cxx/
 android/.cxx/
 android/local.properties
-# MediaPipe model (large binary; download per android/README.md)
-android/app/src/main/assets/pose_landmarker_lite.task
+# MediaPipe pose models (large binaries; download per android/README.md)
+android/app/src/main/assets/*.task
 
 # Editor / OS
 .DS_Store

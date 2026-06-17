@@ -5,7 +5,8 @@
 //   SensorManager (Kotlin) 200Hz -> nativeOnImuSample -> IMUIntegrator
 //   nativeOnFrame: temporal-stereo depth -> world projection -> feed as one
 //   observer -> fusion + Kalman -> WebSocket render (browser).
-// Multi-device fusion needs the real mith-atomas transport (mock here, §15.6).
+// Multi-device fusion rides the real mith-atomas transport (MEC_USE_MITH) or
+// the UDP stopgap; the local fusion ECS is mec's own runtime (§15.13).
 
 #include "mec/components/pose_state_component.h"
 #include "mec/observer/imu_integrator.h"
@@ -22,11 +23,15 @@
 #else
 #include "mec/transport/udp_beacon_transport.h" // UDP stopgap
 #endif
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
+#include "mec/transport/device_registry.h"
 
 #include <android/log.h>
 #include <jni.h>
 #include <array>
+#include <cstdio>
+#include <cstring>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -36,9 +41,9 @@ namespace {
 
 struct Context {
     int width, height;
-    mith::World world;
-    mith::EntityId self = 0;
-    mith::SystemScheduler sched;
+    mec::World world;
+    mec::EntityId self = 0;
+    mec::SystemScheduler sched;
     mec::KeypointAggregatorSystem aggregator;
     mec::PoseFusionSystem fusion;
     mec::KalmanPredictSystem predict;
@@ -62,6 +67,9 @@ struct Context {
     double last_ts_s = 0.0;
     std::unordered_map<uint64_t, double> neighbor_seen; // sender -> last-heard time
     int last_neighbor_count = 0;
+    mec::DeviceRegistry registry;             // discovery + manual connect allowlist
+    bool   want_announce = false;             // reply to a received scan probe
+    double last_announce_s = 0.0;             // idle presence-announce throttle
 
     Context(int w, int h) : width(w), height(h), render(&server), depth(w, h) {}
 };
@@ -73,13 +81,21 @@ inline Context* ctx(jlong h) { return reinterpret_cast<Context*>(h); }
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv*, jobject, jint width, jint height,
-                                          jint port, jlong node_id, jint beacon_port) {
+Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv* env, jobject, jint width, jint height,
+                                          jint port, jlong node_id, jint beacon_port,
+                                          jstring iface_ip) {
     Context* c = new Context(width, height);
     c->node_id = static_cast<uint64_t>(node_id);
+
+    // Wi-Fi interface IPv4 for the beacon transport. On Android the default
+    // route is often cellular, so multicast/broadcast must be pinned to the
+    // Wi-Fi interface or beacons never reach LAN neighbours. Empty/null = let
+    // the kernel choose (0.0.0.0).
+    const char* iface_c = iface_ip ? env->GetStringUTFChars(iface_ip, nullptr) : nullptr;
+    const char* iface = (iface_c && iface_c[0]) ? iface_c : "0.0.0.0";
     c->self = c->world.create_entity();
     c->world.set_local(c->self);
-    c->world.add<mith::BehaviourStateComponent>(c->self);
+    c->world.add<mec::BehaviourStateComponent>(c->self);
 
     c->sched.add(&c->aggregator);
     c->sched.add(&c->fusion, {"KeypointAggregatorSystem"});
@@ -93,17 +109,19 @@ Java_com_mythcal_mec_MecNative_nativeInit(JNIEnv*, jobject, jint width, jint hei
 
 #ifdef MEC_USE_MITH
     (void)beacon_port;
-    if (c->transport.start(/*swarm_id=*/42, /*group=*/"239.10.20.30", /*port=*/47474))
-        LOGI("mith-atomas runtime up (multicast 239.10.20.30:47474)");
+    if (c->transport.start(/*swarm_id=*/42, /*group=*/"239.10.20.30", /*port=*/47474, iface))
+        LOGI("mith-atomas runtime up (multicast 239.10.20.30:47474 via iface %s)", iface);
     else
-        LOGI("mith-atomas runtime failed to start");
+        LOGI("mith-atomas runtime failed to start (iface %s)", iface);
 #else
+    (void)iface;
     if (!c->transport.start(static_cast<uint16_t>(beacon_port), c->node_id))
         LOGI("UDP beacon transport failed to bind port %d", beacon_port);
     else
         LOGI("UDP beacon transport on udp/%d (node %llu)", beacon_port,
              static_cast<unsigned long long>(c->node_id));
 #endif
+    if (iface_c) env->ReleaseStringUTFChars(iface_ip, iface_c);
     return reinterpret_cast<jlong>(c);
 }
 
@@ -166,6 +184,66 @@ Java_com_mythcal_mec_MecNative_nativeObserverCount(JNIEnv*, jobject, jlong h) {
     return pose ? static_cast<jint>(pose->observer_count) : 0;
 }
 
+// --- Discovery + manual connect control (§ device control) -----------------
+
+// Send a discovery probe ("who's there?"). Peers reply with their presence.
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeScan(JNIEnv*, jobject, jlong h) {
+    ctx(h)->transport.scan();
+}
+
+// Snapshot of discovered devices, one per line:
+//   "<id>,<age_ms>,<los>,<connected>,<has_data>,<x>,<y>,<z>"
+// id is an unsigned-decimal u64; connected/has_data are 0/1.
+JNIEXPORT jstring JNICALL
+Java_com_mythcal_mec_MecNative_nativeDevices(JNIEnv* env, jobject, jlong h) {
+    Context* c = ctx(h);
+    const double now = c->last_ts_s;
+    std::string s;
+    char line[160];
+    for (const mec::DiscoveredDevice& d : c->registry.list(now)) {
+        const int age_ms = static_cast<int>((now - d.last_seen_s) * 1000.0);
+        std::snprintf(line, sizeof(line), "%llu,%d,%u,%d,%d,%.2f,%.2f,%.2f\n",
+                      static_cast<unsigned long long>(d.id), age_ms,
+                      static_cast<unsigned>(d.los_state), d.connected ? 1 : 0,
+                      d.has_data ? 1 : 0, d.spx, d.spy, d.spz);
+        s += line;
+    }
+    return env->NewStringUTF(s.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeConnectDevice(JNIEnv*, jobject, jlong h, jlong id) {
+    ctx(h)->registry.connect(static_cast<uint64_t>(id));
+}
+
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeDisconnectDevice(JNIEnv*, jobject, jlong h, jlong id) {
+    ctx(h)->registry.disconnect(static_cast<uint64_t>(id));
+}
+
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeConnectAll(JNIEnv*, jobject, jlong h) {
+    Context* c = ctx(h);
+    c->registry.connect_all(c->last_ts_s);
+}
+
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeDisconnectAll(JNIEnv*, jobject, jlong h) {
+    ctx(h)->registry.disconnect_all();
+}
+
+// manual=true: only operator-connected devices fuse. false: fuse all visible.
+JNIEXPORT void JNICALL
+Java_com_mythcal_mec_MecNative_nativeSetManualConnect(JNIEnv*, jobject, jlong h, jboolean manual) {
+    ctx(h)->registry.set_manual(manual == JNI_TRUE);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_mythcal_mec_MecNative_nativeConnectedCount(JNIEnv*, jobject, jlong h) {
+    return static_cast<jint>(ctx(h)->registry.connected_count());
+}
+
 // landmarks: float[count*4] = (x_norm, y_norm, z, visibility) per MediaPipe.
 JNIEXPORT jstring JNICALL
 Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
@@ -222,7 +300,7 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
     // still renders the pose from others (through-wall).
     c->world.user_neighbours.clear();
     if (kc > 0) {
-        const mith::UserStateVector local = mec::sim::pack_beacon(
+        const mec::UserStateVector local = mec::sim::pack_beacon(
             kps, c->node_id, ts, static_cast<uint16_t>(c->frame_id),
             mec::LOSState::TRACKING, c->node_pos);
         c->world.user_neighbours.entries.push_back(local);
@@ -231,17 +309,47 @@ Java_com_mythcal_mec_MecNative_nativeOnFrame(JNIEnv* env, jobject, jlong h,
     }
 #ifdef MEC_USE_MITH
     c->transport.tick(); // drive mith comms: flush sends, drain receives
+    // mith auto-announces presence via its beacon; surface its neighbour table
+    // into the registry so idle (non-tracking) phones still show up in the scan.
+    for (const mec::BeaconObservation& nb : c->transport.neighbours())
+        c->registry.observe(nb.sender, ts, nb.spx, nb.spy, nb.spz, nb.los_state, /*has_data=*/false);
+#else
+    // UDP stopgap: idle phones (no pose) periodically announce presence so peers
+    // can discover them, and we reply to received scan probes.
+    const uint8_t self_los = static_cast<uint8_t>(kc > 0 ? mec::LOSState::TRACKING
+                                                         : mec::LOSState::NO_TARGET);
+    if (kc == 0 && ts - c->last_announce_s > 0.5) {
+        c->transport.announce_presence(self_los, c->node_pos.x, c->node_pos.y, c->node_pos.z);
+        c->last_announce_s = ts;
+    }
 #endif
     for (const mec::BeaconObservation& rx : c->transport.poll()) {
-        mith::UserStateVector usv;
-        usv.sender = rx.sender;
-        usv.los_state = rx.los_state;
-        usv.recv_time_s = ts; // stamp on arrival (no cross-device clock sync)
-        usv.spx = rx.spx; usv.spy = rx.spy; usv.spz = rx.spz;
-        usv.payload = rx.payload;
-        c->world.user_neighbours.entries.push_back(usv);
+        // A data beacon carries a valid keypoint frame; presence/probe headers do not.
+        uint16_t schema = 0;
+        std::memcpy(&schema, rx.payload.data(), sizeof(schema));
+        const bool has_data = (rx.kind == mec::kBeaconData) && (schema == mec::kMecSchemaId);
+
+        c->registry.observe(rx.sender, ts, rx.spx, rx.spy, rx.spz, rx.los_state, has_data);
         c->neighbor_seen[rx.sender] = ts;
+        if (rx.kind == mec::kBeaconProbe) c->want_announce = true; // reply to scan
+
+        // Manual connect: only fuse devices the operator has connected (§ control).
+        if (has_data && c->registry.should_fuse(rx.sender)) {
+            mec::UserStateVector usv;
+            usv.sender = rx.sender;
+            usv.los_state = rx.los_state;
+            usv.recv_time_s = ts; // stamp on arrival (no cross-device clock sync)
+            usv.spx = rx.spx; usv.spy = rx.spy; usv.spz = rx.spz;
+            usv.payload = rx.payload;
+            c->world.user_neighbours.entries.push_back(usv);
+        }
     }
+#ifndef MEC_USE_MITH
+    if (c->want_announce) {
+        c->transport.announce_presence(self_los, c->node_pos.x, c->node_pos.y, c->node_pos.z);
+        c->want_announce = false;
+    }
+#endif
     // Count distinct neighbour phones heard in the last 2s.
     int nc = 0;
     for (auto it = c->neighbor_seen.begin(); it != c->neighbor_seen.end();) {

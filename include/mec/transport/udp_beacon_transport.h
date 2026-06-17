@@ -18,9 +18,18 @@ namespace mec {
 
 inline constexpr uint32_t kUdpBeaconMagic = 0x4D454331; // "MEC1"
 
+// Packet kind, carried as a header byte so a single socket multiplexes the data
+// beacon and the discovery handshake.
+enum BeaconKind : uint8_t {
+    kBeaconData     = 0, // a real keypoint frame (payload valid)
+    kBeaconPresence = 1, // "here I am" announce (no payload)
+    kBeaconProbe    = 2, // "who's there?" scan request — peers reply with presence
+};
+
 // One neighbour beacon as received off the wire (no mith dependency).
 struct BeaconObservation {
     uint64_t sender = 0;
+    uint8_t  kind = kBeaconData;
     uint8_t  los_state = 0;
     float    spx = 0.0f, spy = 0.0f, spz = 0.0f; // sender world position
     std::array<uint8_t, 128> payload{};
@@ -40,9 +49,15 @@ public:
                const char* dest = "255.255.255.255", uint16_t dest_port = 0);
     void stop();
 
-    // Send our beacon to the subnet (or configured dest).
+    // Send our data beacon (a keypoint frame) to the subnet (or configured dest).
     void broadcast(const std::array<uint8_t, 128>& payload, uint8_t los_state,
                    float spx, float spy, float spz);
+
+    // Discovery handshake. announce_presence() says "here I am" (for idle phones
+    // that aren't broadcasting pose data); scan() sends a probe whose receivers
+    // reply with their presence so the operator can see who is nearby.
+    void announce_presence(uint8_t los_state, float spx, float spy, float spz);
+    void scan();
 
     // Drain all pending received beacons (non-blocking). Our own packets
     // (matching self_node_id) are filtered out.

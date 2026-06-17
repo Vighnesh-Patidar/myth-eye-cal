@@ -9,70 +9,180 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Live pose telemetry drawn over the preview: the 17-keypoint skeleton the
+         device actually recognises, coloured by per-point visibility. -->
+    <com.mythcal.mec.OverlayView
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <TextView
         android:id="@+id/status"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="12dp"
-        android:background="#99000000"
-        android:padding="8dp"
-        android:textColor="#7fd5a0"
-        android:textSize="14sp"
+        android:background="@drawable/bg_panel"
+        android:padding="12dp"
+        android:textColor="@color/mec_accent"
+        android:textSize="13sp"
+        android:lineSpacingExtra="2dp"
         android:fontFamily="monospace"
         android:text="Starting…" />
 
-    <!-- Co-localization (§15.12). Position = (x,y,z) metres in the shared frame.
-         Set manually, or set an ABSOLUTE lat/lon/alt origin (same on every phone)
-         and tap "GPS→pos" so each phone fills its ENU offset from that origin. -->
-    <LinearLayout
-        android:layout_width="wrap_content"
+    <!-- Bottom control stack: tappable section headers expand/collapse each body. -->
+    <ScrollView
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_margin="10dp"
-        android:background="#aa000000"
-        android:orientation="vertical"
-        android:padding="6dp">
+        android:layout_gravity="bottom"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
+        android:fillViewport="false"
+        android:scrollbars="none">
 
-        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:gravity="center_vertical">
-            <EditText android:id="@+id/posX" android:layout_width="58dp" android:layout_height="wrap_content"
-                android:hint="x" android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" android:textSize="13sp" />
-            <EditText android:id="@+id/posY" android:layout_width="58dp" android:layout_height="wrap_content"
-                android:hint="y" android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" android:textSize="13sp" />
-            <EditText android:id="@+id/posZ" android:layout_width="58dp" android:layout_height="wrap_content"
-                android:hint="z" android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:text="0" android:textSize="13sp" />
-            <Button android:id="@+id/setPos" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="Set pos" />
-        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:gravity="center_vertical">
-            <EditText android:id="@+id/oLat" android:layout_width="120dp" android:layout_height="wrap_content"
-                android:hint="origin lat" android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:textSize="13sp" />
-            <EditText android:id="@+id/oLon" android:layout_width="120dp" android:layout_height="wrap_content"
-                android:hint="origin lon" android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:textSize="13sp" />
-            <EditText android:id="@+id/oAlt" android:layout_width="66dp" android:layout_height="wrap_content"
-                android:hint="alt" android:inputType="numberDecimal|numberSigned"
-                android:textColor="#cdd6e0" android:textColorHint="#5a6472" android:textSize="13sp" />
-            <Button android:id="@+id/setOrigin" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="Set origin" />
-            <Button android:id="@+id/originHere" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="Here" />
-        </LinearLayout>
+            <!-- ===== Pose model ===== -->
+            <TextView
+                android:id="@+id/modelHeader"
+                style="@style/MecHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="▾ Pose model" />
 
-        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:orientation="horizontal" android:gravity="center_vertical">
-            <Button android:id="@+id/gpsFill" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="GPS→pos" />
-            <TextView android:id="@+id/gpsInfo" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:layout_marginStart="8dp"
-                android:textColor="#d6a14a" android:textSize="12sp" android:fontFamily="monospace"
-                android:text="gps —" />
+            <LinearLayout
+                android:id="@+id/modelBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_body"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/btnModelHeavy" style="@style/MecSegButton"
+                        android:layout_height="wrap_content" android:text="Heavy" />
+                    <Button android:id="@+id/btnModelFull" style="@style/MecSegButton"
+                        android:layout_height="wrap_content" android:text="Full" />
+                    <Button android:id="@+id/btnModelLite" style="@style/MecSegButton"
+                        android:layout_height="wrap_content" android:text="Lite"
+                        android:layout_marginEnd="0dp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/modelNote"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/mec_text_dim"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
+                    android:text="Heavy = best recognition · Lite = fastest" />
+            </LinearLayout>
+
+            <!-- ===== Devices ===== -->
+            <TextView
+                android:id="@+id/devHeader"
+                style="@style/MecHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="▾ Devices" />
+
+            <LinearLayout
+                android:id="@+id/devBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_body"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <Button android:id="@+id/scanBtn" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Scan" />
+                    <Button android:id="@+id/connectAllBtn" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Conn all" />
+                    <Button android:id="@+id/disconnectAllBtn" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Disc all"
+                        android:layout_marginEnd="0dp" />
+                </LinearLayout>
+
+                <Switch android:id="@+id/manualSwitch" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:checked="true"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/mec_text" android:textSize="12sp"
+                    android:text="Manual connect (only connected devices fuse)" />
+
+                <LinearLayout
+                    android:id="@+id/deviceList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="6dp" />
+            </LinearLayout>
+
+            <!-- ===== Co-localization (§15.12) ===== -->
+            <TextView
+                android:id="@+id/colocHeader"
+                style="@style/MecHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="▸ Co-localization" />
+
+            <LinearLayout
+                android:id="@+id/colocBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_body"
+                android:orientation="vertical"
+                android:padding="10dp"
+                android:visibility="gone">
+
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <EditText android:id="@+id/posX" style="@style/MecField"
+                        android:layout_width="58dp" android:layout_height="wrap_content" android:hint="x" android:text="0" />
+                    <EditText android:id="@+id/posY" style="@style/MecField"
+                        android:layout_width="58dp" android:layout_height="wrap_content" android:hint="y" android:text="0" />
+                    <EditText android:id="@+id/posZ" style="@style/MecField"
+                        android:layout_width="58dp" android:layout_height="wrap_content" android:hint="z" android:text="0" />
+                    <Button android:id="@+id/setPos" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Set pos"
+                        android:layout_marginEnd="0dp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <EditText android:id="@+id/oLat" style="@style/MecField"
+                        android:layout_width="118dp" android:layout_height="wrap_content" android:hint="origin lat" />
+                    <EditText android:id="@+id/oLon" style="@style/MecField"
+                        android:layout_width="118dp" android:layout_height="wrap_content" android:hint="origin lon" />
+                    <EditText android:id="@+id/oAlt" style="@style/MecField"
+                        android:layout_width="64dp" android:layout_height="wrap_content" android:hint="alt" />
+                    <Button android:id="@+id/setOrigin" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Set origin" />
+                    <Button android:id="@+id/originHere" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Here"
+                        android:layout_marginEnd="0dp" />
+                </LinearLayout>
+
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal" android:gravity="center_vertical">
+                    <Button android:id="@+id/gpsFill" style="@style/MecButton"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GPS→pos" />
+                    <TextView android:id="@+id/gpsInfo" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:layout_marginStart="8dp"
+                        android:textColor="@color/mec_warn" android:textSize="12sp" android:fontFamily="monospace"
+                        android:text="gps —" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
-    </LinearLayout>
+    </ScrollView>
 </FrameLayout>

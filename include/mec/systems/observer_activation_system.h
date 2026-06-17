@@ -8,17 +8,17 @@
 #include "mec/components/internal_components.h"
 #include "mec/components/los_state_component.h"
 #include "mec/observer/los_detector.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 namespace mec {
 
-class ObserverActivationSystem : public mith::System {
+class ObserverActivationSystem : public mec::System {
 public:
     const char* name() const override { return "ObserverActivationSystem"; }
     double      rate_hz() const override { return 10.0; }
 
-    void update(mith::World& w, double) override {
-        const mith::EntityId e = w.local();
+    void update(mec::World& w, double) override {
+        const mec::EntityId e = w.local();
         auto* obsc = w.get<LatestObservationComponent>(e);
         if (!obsc) return; // node has no observer pipeline feeding it
 
@@ -31,7 +31,7 @@ public:
         for (int i = 0; i < n; ++i) sum += obsc->obs.keypoints[i].confidence;
         los.confidence = n ? sum / static_cast<float>(n) : 0.0f;
 
-        if (auto* bs = w.get<mith::BehaviourStateComponent>(e))
+        if (auto* bs = w.get<mec::BehaviourStateComponent>(e))
             bs->los_state = static_cast<uint8_t>(los.state);
     }
 

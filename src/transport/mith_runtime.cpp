@@ -28,6 +28,7 @@ uint64_t hash_id(const mith::HierarchicalID& id) {
 }
 
 constexpr mith::MessageTypeID kMecMsgType = mith::messages::CUSTOM + 0; // keypoint frame
+constexpr mith::MessageTypeID kMecDiscoveryType = mith::messages::CUSTOM + 1; // scan probe
 
 } // namespace
 
@@ -107,6 +108,34 @@ std::vector<BeaconObservation> MithRuntime::poll() {
             o.spx = e->position.x; o.spy = e->position.y; o.spz = e->position.z;
         }
         std::memcpy(o.payload.data(), msg->payload.data(), 128);
+        out.push_back(o);
+    }
+    return out;
+}
+
+void MithRuntime::scan() {
+    if (!impl_->world) return;
+    mith::Message m;
+    m.sender = impl_->world->identity();
+    m.recipient = mith::BROADCAST_ID;
+    m.type = kMecDiscoveryType;
+    m.seq = impl_->seq++;
+    m.timestamp_s = impl_->world->synced_time_s();
+    impl_->world->message_transport()->send_message(m);
+}
+
+std::vector<BeaconObservation> MithRuntime::neighbours() const {
+    std::vector<BeaconObservation> out;
+    if (!impl_->world) return out;
+    const mith::HierarchicalID& self_hid = impl_->world->identity();
+    const mith::NeighbourTable& nt = impl_->world->neighbour_table();
+    for (auto it = nt.begin(); it != nt.end(); ++it) {
+        if (it->hid == self_hid) continue;
+        BeaconObservation o;
+        o.sender = hash_id(it->hid);
+        o.kind = kBeaconPresence; // discovery only; no keypoint payload
+        o.los_state = static_cast<uint8_t>(it->state.state);
+        o.spx = it->position.x; o.spy = it->position.y; o.spz = it->position.z;
         out.push_back(o);
     }
     return out;

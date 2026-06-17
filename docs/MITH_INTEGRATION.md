@@ -1,8 +1,10 @@
 # MithAtomas Integration — contract & port plan
 
-Replaces the mock (`mock/mith/atomas.h`) + UDP stopgap (§15.10) with the real
-`mith-atomas` runtime. Our dependency surface is small and isolated; this is the
-exact contract the real API must satisfy (or that we adapt our code to).
+Replaces the UDP stopgap (§15.10) with the real `mith-atomas` runtime for
+inter-device comms. (The local fusion ECS is now the first-party `mec::ecs`
+runtime in `include/mec/ecs/world.h`; the former `mock/mith` shim is gone.) Our
+dependency surface is small and isolated; this is the exact contract the real
+API must satisfy (or that we adapt our code to).
 
 ## 1. Our dependency surface (everything we use from `mith::`)
 
@@ -50,7 +52,8 @@ The keypoint payload is exactly 128 bytes (`KeypointFramePayload`, §4.5).
   a background `HandlerThread`?
 
 ## 3. Port plan (once the API is known)
-1. Drop in real mith (submodule + CMake), delete `mock/mith/`.
+1. Drop in real mith (submodule + CMake). *(Done; the `mock/mith` shim has been
+   removed and the fusion ECS promoted to `mec::ecs`.)*
 2. Either (a) write a thin `mith` adapter mapping our small surface onto the real
    API, or (b) adjust our `systems/*` + `mec_jni` to mith's real System/scheduler
    and beacon-channel calls — pick based on how close the shapes are.
@@ -67,8 +70,8 @@ paired with `neighbour_table()` entries. It mirrors `UdpBeaconTransport`
 (`broadcast` + `poll() -> BeaconObservation`) so the fusion path is unchanged.
 
 mith is **N=1-per-World**, so it provides comms/clock/identity/neighbours; our
-multi-observation fusion stays on the `mock/mith` World/scheduler (now its
-permanent role, not a transport stand-in).
+multi-observation fusion stays on the first-party `mec::ecs` World/scheduler
+(`include/mec/ecs/world.h`) — its permanent role, not a transport stand-in.
 
 ## 5. How to enable
 ```sh

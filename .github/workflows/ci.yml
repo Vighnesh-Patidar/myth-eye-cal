@@ -9,8 +9,12 @@ on:
 
 jobs:
   core:
-    name: C++ core (Linux) — build + test
+    name: C++ core (${{ matrix.build_type }}) — build + test
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [ Release, Debug ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,11 +22,51 @@ jobs:
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y cmake g++ ninja-build
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
       - name: Build
         run: cmake --build build -j
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      - name: Test (verbose, fail on first error)
+        run: ctest --test-dir build --output-on-failure --schedule-random
+      - name: Benchmark smoke (Release only)
+        if: matrix.build_type == 'Release'
+        run: ./build/mec_bench
+
+  sanitize:
+    name: C++ core — ASan + LSan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ ninja-build
+      - name: Configure (sanitizers on)
+        run: cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMEC_SANITIZE=address,undefined
+      - name: Build
+        run: cmake --build build-asan -j
+      - name: Test under sanitizers (leaks + UB are fatal)
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-asan --output-on-failure
+
+  mith:
+    name: C++ — real mith-atomas integration compiles (MEC_USE_MITH)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ ninja-build
+      - name: Configure with mith runtime
+        run: >
+          cmake -S . -B build-mith -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DMEC_USE_MITH=ON -DMITH_BUILD_TESTS=OFF -DMITH_BUILD_EXAMPLES=OFF
+      - name: Build (core + mith_node_demo)
+        run: cmake --build build-mith -j
+      - name: Core tests still pass with mith enabled
+        run: ctest --test-dir build-mith --output-on-failure
 
   android:
     name: Android — build debug APK (arm64, NDK)

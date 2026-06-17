@@ -43,6 +43,13 @@ public:
     // Drain received keypoint payloads, paired with sender neighbour state.
     std::vector<BeaconObservation> poll();
 
+    // Discovery. scan() broadcasts a discovery message (mith already auto-
+    // announces presence via its beacon; this is the explicit "request header").
+    // neighbours() returns the current neighbour-table presence (every node
+    // mith has discovered), as kBeaconPresence observations with no payload.
+    void scan();
+    std::vector<BeaconObservation> neighbours() const;
+
     void   tick();              // world.tick() — drives comms (call once per frame)
     double synced_time_s() const;
     size_t neighbour_count() const;

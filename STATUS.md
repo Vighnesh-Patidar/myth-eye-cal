@@ -37,7 +37,7 @@ mean keypoint error** (standalone and through the ECS scheduler).
 | Render §6.3 | `PoseSerialiser` (pose_frame JSON) | `render/pose_serialiser.h` | covered by pipeline tests |
 | Render §6 | `WebSocketRenderServer` (hand-rolled RFC 6455) | `render/websocket_render_server.*` | `test_websocket_server` |
 | Render §6.4 | Three.js browser viewer | `viewer/myth-eye-cal-viewer.html` | manual (loads, demo mode) |
-| ECS §8/§9 | components + all 6 `System`s + mock runtime | `components/`, `systems/`, `mock/mith/atomas.h` | `test_ecs_pipeline` |
+| ECS §8/§9 | components + all 6 `System`s + first-party fusion runtime | `components/`, `systems/`, `ecs/world.h` | `test_ecs_pipeline` |
 | Sim §12 | synthetic LOS-node generators | `sim/synthetic_pose.h`, `sim/beacon_pack.h` | `test_fusion_pipeline`, `test_ecs_pipeline` |
 
 **Runnable demos** (`build/`): `sim_pose_demo` (fusion→JSON to stdout),
@@ -58,6 +58,8 @@ shell, or just trust `test_websocket_server`'s in-process loopback.)*
 | Debug APK build | **DONE — builds on Linux toolchain (26 MB)** | v0.3 |
 | On-device run (deploy) | pending — needs a phone (VirtualBox USB passthrough or copy APK) | v0.3 |
 | Multi-device transport | **DONE (stopgap) — `UdpBeaconTransport`** over Wi-Fi UDP (§15.10); starts on-device | v0.3 |
+| Discovery + manual connect | **DONE — `DeviceRegistry`** (`test_device_registry`): scan probe / presence header, operator-controlled connect allowlist gates fusion (manual by default); UDP probe/announce + mith neighbour-table enumeration; JNI + Devices UI | v0.3 |
+| On-device telemetry | **DONE — `OverlayView`** live skeleton over the preview + status counts; collapsible menu sections | v0.3 |
 | Real `mith::` comms (`MithRuntime`) | **DONE — compiled + verified** (§15.13): Linux two-node multicast discovery + Android arm64 NDK cross-compile (libmith.a → libmec_jni.so). Behind `MEC_USE_MITH`; UDP stays default | v0.3 |
 | Co-localization (shared world frame) | **OPEN** — multi-phone fusion incoherent without it (§15.10); manual position pin added, orientation alignment unsolved | v0.3 |
 | Native OpenGL ES renderer | optional (browser path works; viewer upgraded — cylinder bones/smoothing) | v0.2/v0.3 |
@@ -66,7 +68,7 @@ shell, or just trust `test_websocket_server`'s in-process loopback.)*
 
 The interfaces these plug into already exist and are exercised by tests:
 `PoseEstimatorBackend` (pose), `Frame`/`IMUFrame` (capture/IMU),
-`LatestObservationComponent` (observer→ECS seam), and the `mith::` mock.
+`LatestObservationComponent` (observer→ECS seam), and the `mec::` fusion ECS.
 
 ## Open design items (carry forward)
 
@@ -85,9 +87,10 @@ From ARCHITECTURE.md §15. **Fixed** = already corrected in code + doc;
   filters.
 - §15.4 **Fixed** — 33→17 keypoint mapping specified (`kMediapipe33To17`).
 - §15.5 **Deviation** — hand-rolled RFC 6455 server instead of uWebSockets.
-- §15.6 **Scaffolding** — ECS on a mock `mith::` runtime; swap for the real
-  submodule. Also: the wire payload carries no per-observation σ (no room), so
-  the aggregator reconstructs σ ≈ 0.03/confidence — lossy.
+- §15.6 **Resolved** — the ECS now runs on the first-party `mec` fusion runtime
+  (`include/mec/ecs/world.h`); the mock has been removed. Residual: the wire
+  payload carries no per-observation σ (no room), so the aggregator reconstructs
+  σ ≈ 0.03/confidence — lossy.
 - §15.7 **Mostly done** — inter-frame **de-rotation** (b) + **epipolar
   subject-motion gating** (a) implemented and tested (`test_temporal_stereo`);
   depth also generalised to focus-of-expansion motion. Residual: subject motion
@@ -106,10 +109,11 @@ reconciliation (§15.7 motion-along-epipolar), and a visual-velocity cross-check
 
 1. ~~**Vendor `mith-atomas`**~~ **DONE** (§15.13) — submodule vendored at
    `third_party/mith-atomas`; `MithRuntime` backs the comms channel behind
-   `MEC_USE_MITH` (Linux + Android arm64 verified). The `mock/mith/` World now
-   *permanently* hosts the multi-observation fusion ECS by design (mith is
-   N=1-per-World); it is no longer a transport stand-in. **Next:** flip
-   `MEC_USE_MITH=ON` as the default once two-phone field validation passes.
+   `MEC_USE_MITH` (Linux + Android arm64 verified). The multi-observation
+   fusion ECS is now the first-party `mec` runtime (`include/mec/ecs`) by design
+   (mith is N=1-per-World, so it cannot host the many-entity fusion graph); the
+   mock has been removed. **Next:** flip `MEC_USE_MITH=ON` as the default once
+   two-phone field validation passes.
 2. **Android shell**: NDK build of `mec_core` as `.so`, JNI bridge, `Camera2` +
    `SensorManager` wiring into `Frame`/`IMUFrame`, MediaPipe behind
    `PoseEstimatorBackend`.
@@ -123,7 +127,7 @@ reconciliation (§15.7 motion-along-epipolar), and a visual-velocity cross-check
 include/mec/{math,types}.h          core types + wire payload
 include/mec/{fusion,observer,render,systems,components,sim}/   headers
 src/{fusion,observer,render}/       compiled into mec_core (zero external deps)
-mock/mith/atomas.h                  mock MithAtomas (swap for real submodule)
+include/mec/ecs/world.h             first-party fusion ECS (World/System/scheduler)
 examples/                           sim_pose_demo, render_server_demo, ecs_pipeline_demo
 viewer/myth-eye-cal-viewer.html     Three.js browser renderer
 tests/{unit,integration}/           10 suites via CTest
@@ -135,5 +139,5 @@ tests/{unit,integration}/           10 suites via CTest
   frequently; **no attribution trailer** in commit messages.
 - **Critique before implementing:** flag upgrades/critical problems, update
   ARCHITECTURE.md (§15), then proceed.
-- `mec_core` stays dependency-free and Linux-testable; Android/mock code lives
-  outside it.
+- `mec_core` stays dependency-free and Linux-testable; Android/transport code
+  lives outside it.

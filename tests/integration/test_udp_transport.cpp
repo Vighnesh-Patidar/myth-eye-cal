@@ -49,8 +49,35 @@ int main() {
     }
 
     // B's own poll must not surface A's packet as its own, and A shouldn't see
-    // anything (A only sent; nothing was sent to A's port).
+    // anything yet (A only sent; nothing was sent to A's port).
     CHECK(a.poll().empty());
+
+    // Discovery handshake: A probes ("who's there?"), B replies with presence.
+    a.scan();
+    std::vector<BeaconObservation> probe;
+    for (int i = 0; i < 200 && probe.empty(); ++i) {
+        probe = b.poll();
+        if (probe.empty()) usleep(1000);
+    }
+    CHECK(probe.size() == 1);
+    if (!probe.empty()) {
+        CHECK(probe[0].sender == 1);
+        CHECK(probe[0].kind == kBeaconProbe); // the specific request header
+    }
+
+    b.announce_presence(static_cast<uint8_t>(LOSState::ACQUIRING), 9.0f, 8.0f, 7.0f);
+    std::vector<BeaconObservation> pres;
+    for (int i = 0; i < 200 && pres.empty(); ++i) {
+        pres = a.poll();
+        if (pres.empty()) usleep(1000);
+    }
+    CHECK(pres.size() == 1);
+    if (!pres.empty()) {
+        CHECK(pres[0].sender == 2);
+        CHECK(pres[0].kind == kBeaconPresence);
+        CHECK(pres[0].los_state == static_cast<uint8_t>(LOSState::ACQUIRING));
+        CHECK_NEAR(pres[0].spx, 9.0, 1e-4);
+    }
 
     a.stop();
     b.stop();

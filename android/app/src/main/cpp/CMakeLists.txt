@@ -1,8 +1,7 @@
 # NDK build of the Myth-Eye-Cal JNI bridge. Compiles the tested, portable
-# mec_core sources (zero Android deps) plus the JNI glue into one .so.
-#
-# NOTE: `mith::` is still the header-only MOCK (../../../../../mock). Swap that
-# include path for the real mith-atomas submodule when it is vendored (§15.6).
+# mec_core sources (zero Android deps) plus the JNI glue into one .so. The
+# fusion ECS is first-party (include/mec/ecs); inter-device comms come from the
+# real mith-atomas submodule (MEC_USE_MITH) or the UDP stopgap.
 
 cmake_minimum_required(VERSION 3.22.1)
 project(mec_jni LANGUAGES CXX)
@@ -27,7 +26,6 @@ add_library(mec_jni SHARED
 
 target_include_directories(mec_jni PRIVATE
     ${REPO}/include
-    ${REPO}/mock            # mock MithAtomas ECS (World/scheduler shim, §15.6)
 )
 
 find_library(log-lib log)

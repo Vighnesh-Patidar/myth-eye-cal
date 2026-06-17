@@ -5,12 +5,12 @@
 // read by RenderSerialiserSystem.
 
 #include "mec/types.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 #include <array>
 
 namespace mec {
 
-struct PoseStateComponent : mith::ColdComponent<PoseStateComponent> {
+struct PoseStateComponent : mec::ColdComponent<PoseStateComponent> {
     std::array<WorldKeypoint, kNumKeypoints> keypoints{};
     double  last_update_s = 0.0;
     uint8_t observer_count = 0;   // how many LOS nodes contributed

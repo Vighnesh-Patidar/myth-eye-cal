@@ -8,17 +8,17 @@
 #include "mec/components/internal_components.h"
 #include "mec/components/pose_state_component.h"
 #include "mec/fusion/multi_observer_fusion.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 namespace mec {
 
-class PoseFusionSystem : public mith::System {
+class PoseFusionSystem : public mec::System {
 public:
     const char* name() const override { return "PoseFusionSystem"; }
     double      rate_hz() const override { return 25.0; }
 
-    void update(mith::World& w, double) override {
-        const mith::EntityId e = w.local();
+    void update(mec::World& w, double) override {
+        const mec::EntityId e = w.local();
         auto* agg = w.get<AggregatedObservationsComponent>(e);
         if (!agg) return;
 

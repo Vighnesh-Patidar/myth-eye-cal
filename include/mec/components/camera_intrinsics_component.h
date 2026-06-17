@@ -5,11 +5,11 @@
 
 #include "mec/math.h"
 #include "mec/observer/keypoint_projector.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 namespace mec {
 
-struct CameraIntrinsicsComponent : mith::ColdComponent<CameraIntrinsicsComponent> {
+struct CameraIntrinsicsComponent : mec::ColdComponent<CameraIntrinsicsComponent> {
     CameraIntrinsics intrinsics{};
     Quat             cam_to_body_rot{};   // identity default
     Vec3             cam_to_body_trans{};

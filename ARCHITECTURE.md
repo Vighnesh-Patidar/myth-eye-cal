@@ -544,6 +544,15 @@ Temporal stereo depth runs in the same 5ms slot previously occupied by the depth
 
 The Kalman predictor decouples fusion rate from render rate. Fusion runs at 20–30fps (inference rate). Renderer runs at 60fps consuming Kalman predictions between fusion updates. Perceived latency = capture-to-render, not fusion rate.
 
+> **Measured (2026-06-17).** The budget above is a *target*. The fusion-core
+> stages are now measured (host i5-11260H): scalar fuse 19 ns/keypoint,
+> anisotropic fuse 64 ns/keypoint, Kalman update 102 ns, Kalman predict 28 ns,
+> full 17-keypoint 3-observer frame **5.1 µs** end to end — ~4 orders of
+> magnitude under the 3 ms fusion budget row. On device, fused poses stream to
+> the host at **11.4 Hz** (mean 88.8 ms between frames) driven by camera +
+> MediaPipe `lite`, consistent with the <100 ms capture-to-render target. Full
+> numbers + method: [`docs/METRICS_REPORT.md`](docs/METRICS_REPORT.md).
+
 ---
 
 ## 8. Component Model (MithAtomas integration)
@@ -667,7 +676,7 @@ No ROS. No OpenCV. No TFLite. No depth model weights. No external capture framew
 
 ### v0.1 — Fusion Core (no camera)
 - [x] `MultiObserverFusion` + `KeypointKalmanTracker` + all six §9 `System`
-      wrappers, wired through a mock MithAtomas runtime (§15.6)
+      wrappers, wired through the first-party `mec` fusion runtime (§15.6)
 - [x] Simulated LOS node (`sim/synthetic_pose.h`, `sim_pose_demo`)
 - [x] `myth-eye-cal-viewer.html` Three.js renderer
 - [x] WebSocket render server (hand-rolled, §15.5; `render_server_demo`)
@@ -832,16 +841,18 @@ an explicit `kMediapipe33To17` index table (`keypoint_projector.h`). Note one
 consequence of the strict 17-slot skeleton: only one ankle survives the cut
 (slot 16); a future revision may prefer 18 slots or re-pack the face points.
 
-### 15.6 ECS systems stubbed against a mock MithAtomas *(scaffolding)*
+### 15.6 ECS systems on the first-party `mec` fusion runtime *(resolved)*
 
-The §9 systems are implemented against a header-only **mock** `mith::` runtime
-(`mock/mith/atomas.h`): `World` (entity/component store), `SystemScheduler`
-(mixed-rate, dependency-ordered), `NeighbourTable`, `UserNeighbourTable`, the
-user beacon channel, and the core `Position`/`Orientation`/`BehaviourState`
-components. This lets all six systems plus the `LOSDetector` (§3.2) be built,
-wired, and tested on Linux before the real coordination layer exists. Swap the
-`mock/` directory for the real submodule (same names) when it lands; `mec_core`
-itself stays free of the mock.
+The §9 systems run on a small, first-party Entity/Component/System runtime
+(`include/mec/ecs/world.h`, namespace `mec`): `World` (entity/component store),
+`SystemScheduler` (mixed-rate, dependency-ordered), `NeighbourTable`,
+`UserNeighbourTable`, the user beacon channel, and the core
+`Position`/`Orientation`/`BehaviourState` components. This hosts all six systems
+plus the `LOSDetector` (§3.2), built and tested on Linux. Originally a "mock
+mith" stand-in, it is now the app's permanent fusion runtime: mith-atomas is
+N=1-per-World and cannot host the many-entity fusion graph (§15.13), so the two
+layers coexist — `mec::ecs` for fusion, `mith::` for coordination/transport. The
+old `mock/` directory has been removed; `mec_core` owns the ECS header.
 
 Two findings surfaced while wiring it:
 
@@ -954,8 +965,9 @@ WebSocket render to the browser; SensorManager → `nativeOnImuSample` at ~200Hz
 
 Bring-up shortcuts to revisit (tracked in `android/README.md`): pose runs on a
 grayscale bitmap; `lensPriorM` is constant (wire `LENS_FOCUS_DISTANCE`); the
-node is pinned at the origin; `mith::` is still the mock, so **multi-device
-fusion needs the real mith-atomas transport**. On-device run is pending a deploy
+node is pinned at the origin. Multi-device fusion rides the real mith-atomas
+transport (`MEC_USE_MITH`, on for Android, §15.13); the local fusion ECS is
+mec's own runtime (`include/mec/ecs`). On-device run is pending a deploy
 (VirtualBox USB passthrough or copying the APK to the host).
 
 ### 15.10 UDP multi-device transport (stopgap for mith-atomas) *(feature)*
@@ -1035,8 +1047,9 @@ is not thread-safe).
 **Note — two ECS layers coexist by design.** mith is **N=1-per-World** (one self
 entity), so it owns *comms / clock / identity / neighbour state*; our multi-
 observation **fusion** ECS (aggregator buffers, Kalman bank, fused pose) stays on
-the lightweight `mock/mith` World/scheduler. The mock is no longer a stand-in for
-transport — it's our app's fusion runtime; mith is the coordination substrate.
+the lightweight first-party `mec::ecs` World/scheduler (`include/mec/ecs/world.h`).
+That runtime is the app's permanent fusion engine; mith is the coordination
+substrate. (The former `mock/mith` shim has been removed.)
 
 **Status:** wired behind the CMake option `MEC_USE_MITH` (default OFF → UDP
 stopgap). The submodule is vendored at `third_party/mith-atomas` (v1.0.0-rc1)
@@ -1063,8 +1076,101 @@ camera→body extrinsic offset) still needs on-site validation with ≥2 physica
 phones on one Wi-Fi. A printed fiducial marker would later give fully automatic
 co-localization (position + orientation) without manual pins.
 
+### 15.14 Landscape lock, render-side rotation, and One-Euro smoothing *(feature)*
+
+Three coupled on-device decisions for the live skeleton overlay, each with its
+reasoning:
+
+- **Keep MediaPipe input upright; rotate the *render*, not the camera path.**
+  BlazePose detects best on an upright person, so `CameraController` continues to
+  rotate captured frames to upright before inference (detection quality is the
+  priority — "take some performance if needed"). The on-screen overlay was then
+  90° off because the `SurfaceView` preview shows the *raw* landscape sensor
+  buffer while the landmarks are in the *rotated* (portrait) frame. **Decision:**
+  undo the camera's rotation in the renderer only — `OverlayView.rotationDeg =
+  (360 − cameraAppliedRotation) % 360` — instead of changing the detection input.
+  *Reasoning:* this fixes the visual mismatch with zero risk to the detector, and
+  keeps the rotation logic in one place (the view that draws), derived from the
+  one source of truth (`CameraController.appliedRotation()`).
+- **Lock the activity to `landscape`.** *Reasoning:* the app is a wide-scene
+  observer; a fixed orientation removes runtime re-layout/rotation churn and makes
+  the preview↔overlay rotation a single constant rather than a per-frame variable.
+- **One-Euro filter on the 33 landmarks (x,y,z).** *Reasoning:* partial / low-
+  confidence joints were jittery. A plain EMA either lags fast motion or fails to
+  kill still-pose jitter; the One-Euro adaptive low-pass (Casiez et al.) does
+  both — low cutoff when still (kills jitter), high cutoff when moving (no lag).
+  Filters reset on track-loss so re-acquisition doesn't interpolate from a stale
+  pose. Visibility is left unfiltered (it gates rendering, it isn't a position).
+  Presence confidence was also raised 0.3→0.5 to drop phantom joints, and the
+  overlay hides joints below 0.3 visibility.
+
 ---
 
+## 16. Testing, Verification & Measured Performance
+
+This section records *how the system is verified* and *why the test surface is
+shaped the way it is* — the user-facing companion to the numbers in
+[`docs/METRICS_REPORT.md`](docs/METRICS_REPORT.md).
+
+### 16.1 Test harness — decision & reasoning
+
+- **No GTest; a 40-line header (`tests/unit/test_util.h`).** *Reasoning:* §13
+  mandates a zero-dependency core that builds anywhere (Linux x86, Android NDK).
+  A test main returns non-zero on failure and CTest treats that as fail; `CHECK`
+  / `CHECK_NEAR` cover everything the math needs without vendoring a framework.
+- **Loopback sockets for the transports, not mocks.** *Reasoning:* the UDP beacon
+  and the WebSocket server *are* OS-socket code; mocking the socket layer would
+  test the mock. The integration tests bind real ephemeral ports on `127.0.0.1`
+  and exchange real datagrams/frames.
+- **Synthetic ground truth for accuracy.** *Reasoning:* without two instrumented
+  phones there is no real-world 3D ground truth, so accuracy is measured against
+  a deterministic synthetic skeleton with controlled per-observer noise
+  (`sim::SyntheticObserver`). This isolates the *fusion* error from sensor error.
+
+### 16.2 Coverage (20 CTest cases)
+
+| Area | Tests | Surface covered |
+|---|---|---|
+| Fusion math | `multi_observer_fusion`, `anisotropic_fusion`, `fusion_edges` | weighted LS, information-form 3×3, zero-weight rejection, covariance output, geometry bonus |
+| Temporal | `kalman_tracker` | init, constant-velocity prediction, confidence decay, anisotropic gain, isotropic fallback |
+| Observer | `keypoint_projector`, `los_detector`, `lucas_kanade`, `temporal_stereo`, `imu_integrator` | projection, LOS hysteresis, optical flow, depth, strapdown |
+| Wire / render | `wire_payload`, `pose_serialiser`, `math` | fixed-point pack/clamp, JSON envelope, vector/quaternion |
+| ECS | `ecs_world`, `ecs_pipeline` | store, scheduler rates + topo-order + one-run/tick, full §9 pipeline |
+| Transport | `udp_transport`(+`_edges`), `websocket_server`(+`_edges`) | data/presence/probe handshake, magic/self filtering, RFC 6455 handshake, fragmented handshake, 2-client fan-out, extended-length frames |
+| Discovery | `device_registry` | manual gating, auto mode, TTL prune, connect-all |
+
+### 16.3 Sanitizer gate — decision & reasoning
+
+The whole suite runs under ASan + LSan + UBSan via the `MEC_SANITIZE` CMake
+option (CI job `sanitize`). *Reasoning:* the core manipulates raw sockets,
+`memcpy` of packed wire structs, and `std::any` component storage — exactly the
+places where leaks/UB hide. `valgrind` is not assumed present (it isn't on the
+dev box); compiler sanitizers are portable and CI-friendly. **Result: 20/20
+clean, zero leaks, zero UB.**
+
+### 16.4 Live link verification — decision & reasoning
+
+`tools/ws_probe.py` is a dependency-free host client that performs the RFC 6455
+handshake by hand and measures the real device→host pose stream (rate, jitter,
+keypoint count, confidence). *Reasoning:* the on-device path (Camera2 →
+MediaPipe → fusion → WebSocket) cannot be exercised by the C++ unit tests; a
+thin host probe over `adb forward` validates the *whole* chain on real hardware
+and doubles as the latency/throughput measurement tool for the report.
+
+### 16.5 Benchmark harness
+
+`tools/bench.cpp` (→ `mec_bench`) times the hot ops and the end-to-end fusion
+pipeline, and reports fused accuracy vs. synthetic ground truth. It is the
+source of the host numbers in `docs/METRICS_REPORT.md` and is reproducible with
+a single command.
+
+---
+
+*Document version: 1.1.0 — §15.14 landscape lock + render-side rotation +
+One-Euro smoothing; §16 testing/verification with measured metrics; expanded to
+20 CTest cases (wire payload, serialiser, math, ECS world, WS/UDP edges, fusion
+edges); ASan/LSan/UBSan gate (`MEC_SANITIZE`); `tools/ws_probe.py` device-link
+probe + `mec_bench`; full numbers in docs/METRICS_REPORT.md*
 *Document version: 1.0.1 — §15.13 real mith-atomas comms integration compiled +
 verified: Linux two-node multicast discovery (`mith_node_demo`) and Android
 arm64 NDK cross-compile (libmith.a statically linked into libmec_jni.so). Behind

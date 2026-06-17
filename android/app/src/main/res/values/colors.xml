@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="mec_accent">#7FD5A0</color>
+    <color name="mec_accent_bg">#2E7D5B</color>
+    <color name="mec_panel">#CC0E141B</color>
+    <color name="mec_header">#E61A2330</color>
+    <color name="mec_btn">#1E2A38</color>
+    <color name="mec_btn_pressed">#2A3A4D</color>
+    <color name="mec_stroke">#40A8C0D8</color>
+    <color name="mec_text">#E6EDF3</color>
+    <color name="mec_text_dim">#9AA4B2</color>
+    <color name="mec_hint">#5A6472</color>
+    <color name="mec_warn">#D6A14A</color>
+</resources>

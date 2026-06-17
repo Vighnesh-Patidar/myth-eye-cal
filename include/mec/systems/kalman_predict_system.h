@@ -7,17 +7,17 @@
 
 #include "mec/components/internal_components.h"
 #include "mec/components/pose_state_component.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 namespace mec {
 
-class KalmanPredictSystem : public mith::System {
+class KalmanPredictSystem : public mec::System {
 public:
     const char* name() const override { return "KalmanPredictSystem"; }
     double      rate_hz() const override { return 60.0; }
 
-    void update(mith::World& w, double) override {
-        const mith::EntityId e = w.local();
+    void update(mec::World& w, double) override {
+        const mec::EntityId e = w.local();
         auto* bank = w.get<KalmanBankComponent>(e);
         auto* pose = w.get<PoseStateComponent>(e);
         if (!bank || !pose || !pose->is_valid) return;

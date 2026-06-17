@@ -1,5 +1,5 @@
-// Integration test: the §9 ECS systems driven by the mock MithAtomas
-// scheduler. Covers (a) the consumer fusion+render path end-to-end, (b)
+// Integration test: the §9 ECS systems driven by the mec fusion scheduler.
+// Covers (a) the consumer fusion+render path end-to-end, (b)
 // UserNeighbourTable filtering (§5.1), and (c) the observer broadcast path.
 
 #include "mec/sim/beacon_pack.h"
@@ -18,17 +18,17 @@
 using namespace mec;
 
 static void test_consumer_pipeline() {
-    mith::World world;
-    const mith::EntityId self = world.create_entity();
+    mec::World world;
+    const mec::EntityId self = world.create_entity();
     world.set_local(self);
-    world.add<mith::BehaviourStateComponent>(self);
+    world.add<mec::BehaviourStateComponent>(self);
 
     KeypointAggregatorSystem aggregator;
     PoseFusionSystem         fusion;
     KalmanPredictSystem      predict;
     RenderSerialiserSystem   render(nullptr); // no live server in the test
 
-    mith::SystemScheduler sched;
+    mec::SystemScheduler sched;
     sched.add(&aggregator);
     sched.add(&fusion,  {"KeypointAggregatorSystem"});
     sched.add(&predict, {"PoseFusionSystem"});
@@ -52,7 +52,7 @@ static void test_consumer_pipeline() {
         for (size_t i = 0; i < observers.size(); ++i)
             world.user_neighbours.entries.push_back(
                 sim::pack_beacon(observers[i].observe(now),
-                                 2000u + static_cast<mith::NodeId>(i), now));
+                                 2000u + static_cast<mec::NodeId>(i), now));
         sched.tick(world, dt);
 
         if (now > 0.6) {
@@ -86,8 +86,8 @@ static void test_consumer_pipeline() {
 }
 
 static void test_neighbour_filtering() {
-    mith::World world;
-    const mith::EntityId self = world.create_entity();
+    mec::World world;
+    const mec::EntityId self = world.create_entity();
     world.set_local(self);
     KeypointAggregatorSystem aggregator;
 
@@ -115,12 +115,12 @@ static void test_neighbour_filtering() {
 }
 
 static void test_observer_broadcast() {
-    mith::World world;
-    const mith::EntityId self = world.create_entity();
+    mec::World world;
+    const mec::EntityId self = world.create_entity();
     world.set_local(self);
-    world.add<mith::BehaviourStateComponent>(self);
-    world.add<mith::PositionComponent>(self, mith::PositionComponent{1.0f, 2.0f, 0.5f});
-    world.add<mith::OrientationComponent>(self); // identity
+    world.add<mec::BehaviourStateComponent>(self);
+    world.add<mec::PositionComponent>(self, mec::PositionComponent{1.0f, 2.0f, 0.5f});
+    world.add<mec::OrientationComponent>(self); // identity
 
     CameraIntrinsicsComponent cam;
     cam.intrinsics.fx = 500; cam.intrinsics.fy = 500;
@@ -171,16 +171,16 @@ static void test_observer_broadcast() {
 // sender position and PoseFusionSystem fuses anisotropically, so the diverse
 // angles constrain all axes (geometry bonus) despite large per-view depth error.
 static void test_anisotropic_pipeline() {
-    mith::World world;
-    const mith::EntityId self = world.create_entity();
+    mec::World world;
+    const mec::EntityId self = world.create_entity();
     world.set_local(self);
-    world.add<mith::BehaviourStateComponent>(self);
+    world.add<mec::BehaviourStateComponent>(self);
 
     KeypointAggregatorSystem aggregator;
     PoseFusionSystem         fusion;
     KalmanPredictSystem      predict;
     RenderSerialiserSystem   render(nullptr);
-    mith::SystemScheduler sched;
+    mec::SystemScheduler sched;
     sched.add(&aggregator);
     sched.add(&fusion,  {"KeypointAggregatorSystem"});
     sched.add(&predict, {"PoseFusionSystem"});
@@ -204,7 +204,7 @@ static void test_anisotropic_pipeline() {
         world.user_neighbours.clear();
         for (size_t i = 0; i < observers.size(); ++i)
             world.user_neighbours.entries.push_back(
-                sim::pack_beacon(observers[i].observe(now), 3000u + static_cast<mith::NodeId>(i),
+                sim::pack_beacon(observers[i].observe(now), 3000u + static_cast<mec::NodeId>(i),
                                  now, 0, LOSState::TRACKING, observers[i].viewpoint()));
         sched.tick(world, dt);
 

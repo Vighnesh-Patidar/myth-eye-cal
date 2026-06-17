@@ -1,17 +1,17 @@
 // ecs_pipeline_demo - the full §5/§6 fusion + render pipeline running through
-// the mock MithAtomas ECS (§9 systems + SystemScheduler), serving fused poses
-// over WebSocket. The local node is a non-LOS consumer; three synthetic LOS
+// the mec fusion ECS (§9 systems + SystemScheduler), serving fused poses over
+// WebSocket. The local node is a non-LOS consumer; three synthetic LOS
 // neighbours feed observations into the UserNeighbourTable.
 //
 //   args: <port=8080> <num_observers=3> <seconds=0 (0 = run forever)>
 
+#include "mec/ecs/world.h"
 #include "mec/sim/beacon_pack.h"
 #include "mec/sim/synthetic_pose.h"
 #include "mec/systems/keypoint_aggregator_system.h"
 #include "mec/systems/kalman_predict_system.h"
 #include "mec/systems/pose_fusion_system.h"
 #include "mec/systems/render_serialiser_system.h"
-#include "mith/atomas.h"
 
 #include <chrono>
 #include <cstdio>
@@ -32,10 +32,10 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "ecs_pipeline_demo: ws://0.0.0.0:%u/pose  (%d LOS neighbours)\n",
                  server.port(), n_obs);
 
-    mith::World world;
-    const mith::EntityId self = world.create_entity();
+    mec::World world;
+    const mec::EntityId self = world.create_entity();
     world.set_local(self);
-    world.add<mith::BehaviourStateComponent>(self); // local node is a consumer
+    world.add<mec::BehaviourStateComponent>(self); // local node is a consumer
 
     // §9 fusion + render systems wired with the dependency order from the doc.
     mec::KeypointAggregatorSystem aggregator;
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     mec::KalmanPredictSystem      predict;
     mec::RenderSerialiserSystem   render(&server);
 
-    mith::SystemScheduler sched;
+    mec::SystemScheduler sched;
     sched.add(&aggregator);
     sched.add(&fusion,  {"KeypointAggregatorSystem"});
     sched.add(&predict, {"PoseFusionSystem"});
@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < observers.size(); ++i)
             world.user_neighbours.entries.push_back(
                 mec::sim::pack_beacon(observers[i].observe(now),
-                                      2000u + static_cast<mith::NodeId>(i), now));
+                                      2000u + static_cast<mec::NodeId>(i), now));
 
         server.poll_events(0);
         sched.tick(world, now - last);

@@ -7,7 +7,7 @@
 #include "mec/components/internal_components.h"
 #include "mec/math.h"
 #include "mec/types.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,7 +15,7 @@
 
 namespace mec {
 
-class KeypointAggregatorSystem : public mith::System {
+class KeypointAggregatorSystem : public mec::System {
 public:
     explicit KeypointAggregatorSystem(double fusion_window_s = 0.150)
         : window_s_(fusion_window_s) {}
@@ -23,8 +23,8 @@ public:
     const char* name() const override { return "KeypointAggregatorSystem"; }
     double      rate_hz() const override { return 25.0; }
 
-    void update(mith::World& w, double) override {
-        const mith::EntityId e = w.local();
+    void update(mec::World& w, double) override {
+        const mec::EntityId e = w.local();
         auto& agg = w.get_or_add<AggregatedObservationsComponent>(e);
         agg.clear();
         const double now = w.now_s();

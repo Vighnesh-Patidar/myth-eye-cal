@@ -1,16 +1,16 @@
 #pragma once
 
 // ============================================================================
-// MOCK MithAtomas runtime — a stand-in for the real `mith-atomas` submodule
-// (ARCHITECTURE.md §2, §8, §9, §14). It provides just enough of the surface
-// the Myth-Eye-Cal ECS systems need — Entity/Component store, SystemScheduler,
-// NeighbourTable, UserNeighbourTable, the user beacon channel, and the core
-// StateVector components — so the §9 systems can be implemented and tested on
-// Linux before the coordination layer exists.
+// Myth-Eye-Cal fusion ECS — a small, first-party Entity/Component/System
+// runtime (ARCHITECTURE.md §8, §9). It hosts the multi-observation fusion
+// pipeline: the aggregator buffer, the per-keypoint Kalman bank, the fused
+// pose, and the render serialiser, scheduled at mixed rates.
 //
-// NOT a real implementation: no transport, clock sync, Ed25519 auth, partition
-// merge, or fault recovery. Swap this directory out for the real submodule
-// (same `mith::` names) when it lands.
+// This is NOT the coordination substrate. Inter-device comms / clock sync /
+// identity / neighbour discovery are provided by the real `mith-atomas`
+// runtime (see transport/mith_runtime.{h,cpp}, behind MEC_USE_MITH) or the UDP
+// stopgap. mith is N=1-per-World, so it cannot host our many-entity fusion
+// graph; this lightweight ECS does (§15.13).
 // ============================================================================
 
 #include <algorithm>
@@ -23,27 +23,27 @@
 #include <unordered_map>
 #include <vector>
 
-namespace mith {
+namespace mec {
 
 using EntityId = uint32_t;
 using NodeId   = uint64_t;
 inline constexpr EntityId kInvalidEntity = 0;
 
-// CRTP component category tags (real MithAtomas separates hot/cold storage;
-// the mock stores both identically and only uses the tag for documentation).
+// CRTP component category tags (hot = per-frame mutated, cold = sparse). The
+// runtime stores both identically; the tag documents intent.
 template <class Derived> struct HotComponent {};
 template <class Derived> struct ColdComponent {};
 
-// --- Core StateVector components (replicated by the coordination layer) ----
+// --- Core node components --------------------------------------------------
 struct PositionComponent    { float x = 0, y = 0, z = 0; };               // GPS / manual pin
 struct OrientationComponent { float qw = 1, qx = 0, qy = 0, qz = 0; };    // IMU quaternion
 struct BehaviourStateComponent { uint8_t los_state = 0; };                // §3.3 carries LOS
 
-// --- Neighbour discovery (§2 NeighbourTable) -------------------------------
+// --- Neighbour discovery (mirrors the transport's neighbour table) ---------
 struct Neighbour {
-    NodeId                 id = 0;
+    NodeId                  id = 0;
     BehaviourStateComponent behaviour{};
-    double                 last_seen_s = 0.0;
+    double                  last_seen_s = 0.0;
 };
 struct NeighbourTable { std::vector<Neighbour> neighbours; };
 
@@ -52,9 +52,9 @@ struct UserStateVector {
     NodeId   sender = 0;
     uint8_t  los_state = 0;   // sender's LOS, mirrored from its BehaviourState
     double   recv_time_s = 0.0;
-    // Sender's world position, from its replicated PositionComponent. Lets the
-    // receiver reconstruct each observation's view ray for anisotropic fusion
-    // (§15.3). Zero = unknown.
+    // Sender's world position (from its PositionComponent). Lets the receiver
+    // reconstruct each observation's view ray for anisotropic fusion (§15.3).
+    // Zero = unknown.
     float    spx = 0.0f, spy = 0.0f, spz = 0.0f;
     std::array<uint8_t, 128> payload{};
 };
@@ -123,8 +123,8 @@ public:
 };
 
 // Mixed-rate scheduler. Each system runs at ~rate_hz; `after` names enforce
-// execution order within a tick (the §9 dependency graph). Simplified vs the
-// real async DAG: at most one execution per system per tick.
+// execution order within a tick (the §9 dependency graph). At most one
+// execution per system per tick.
 class SystemScheduler {
 public:
     void add(System* s, std::vector<std::string> after = {}) {
@@ -176,4 +176,4 @@ private:
     bool                ordered_ = false;
 };
 
-} // namespace mith
+} // namespace mec

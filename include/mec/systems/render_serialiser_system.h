@@ -8,13 +8,13 @@
 #include "mec/components/pose_state_component.h"
 #include "mec/render/pose_serialiser.h"
 #include "mec/render/websocket_render_server.h"
-#include "mith/atomas.h"
+#include "mec/ecs/world.h"
 
 #include <string>
 
 namespace mec {
 
-class RenderSerialiserSystem : public mith::System {
+class RenderSerialiserSystem : public mec::System {
 public:
     explicit RenderSerialiserSystem(WebSocketRenderServer* server = nullptr)
         : server_(server) {}
@@ -22,7 +22,7 @@ public:
     const char* name() const override { return "RenderSerialiserSystem"; }
     double      rate_hz() const override { return 60.0; }
 
-    void update(mith::World& w, double) override {
+    void update(mec::World& w, double) override {
         auto* pose = w.get<PoseStateComponent>(w.local());
         if (!pose || !pose->is_valid) return;
 
