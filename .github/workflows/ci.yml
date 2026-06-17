@@ -85,6 +85,15 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platforms;android-34" "build-tools;34.0.0" \
                      "ndk;26.1.10909125" "cmake;3.22.1"
+      - name: Fetch pose models (git-ignored binaries) so the APK runs out-of-the-box
+        working-directory: android
+        run: |
+          BASE=https://storage.googleapis.com/mediapipe-models/pose_landmarker
+          for m in heavy full lite; do
+            curl -fL --retry 3 -o "app/src/main/assets/pose_landmarker_$m.task" \
+              "$BASE/pose_landmarker_$m/float16/latest/pose_landmarker_$m.task"
+          done
+          ls -lh app/src/main/assets/*.task
       - name: Build APK
         working-directory: android
         run: |
@@ -96,3 +105,28 @@ jobs:
           name: app-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  release:
+    name: Publish release APK to GitHub Release
+    needs: [ core, sanitize, mith, android ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: app-debug-apk
+          path: dist
+      - name: Name APK with the release tag
+        run: |
+          mkdir -p out
+          cp dist/app-debug.apk "out/myth-eye-cal-${GITHUB_REF_NAME}-debug.apk"
+          ls -lh out
+      - name: Attach APK to the GitHub Release (created if absent)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

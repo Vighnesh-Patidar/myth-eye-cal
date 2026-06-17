@@ -4,6 +4,7 @@
 [![tests](https://img.shields.io/badge/tests-20%2F20%20passing-brightgreen)](docs/METRICS_REPORT.md#7-test-coverage-summary)
 [![sanitizers](https://img.shields.io/badge/ASan%2FLSan%2FUBSan-clean-brightgreen)](docs/METRICS_REPORT.md#43-leak--undefined-behaviour-audit-host-measured)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![download APK](https://img.shields.io/github/v/release/Vighnesh-Patidar/myth-eye-cal?label=download%20APK&logo=android)](https://github.com/Vighnesh-Patidar/myth-eye-cal/releases/latest)
 
 Distributed pose reconstruction across a self-organising network of commodity
 smartphones — render a person's live 3D pose from devices that have line of
