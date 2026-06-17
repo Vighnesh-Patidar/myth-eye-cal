@@ -88,6 +88,7 @@ jobs:
       - name: Fetch pose models (git-ignored binaries) so the APK runs out-of-the-box
         working-directory: android
         run: |
+          mkdir -p app/src/main/assets
           BASE=https://storage.googleapis.com/mediapipe-models/pose_landmarker
           for m in heavy full lite; do
             curl -fL --retry 3 -o "app/src/main/assets/pose_landmarker_$m.task" \

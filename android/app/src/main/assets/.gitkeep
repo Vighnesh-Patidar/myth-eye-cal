@@ -1,0 +1,2 @@
+# Keeps app/src/main/assets/ in the tree. The pose_landmarker_*.task models are
+# git-ignored (large binaries); CI downloads them and local builds drop them here.
