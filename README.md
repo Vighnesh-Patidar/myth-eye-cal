@@ -1,5 +1,10 @@
 # Myth-Eye-Cal
 
+[![CI](https://github.com/Vighnesh-Patidar/myth-eye-cal/actions/workflows/ci.yml/badge.svg)](https://github.com/Vighnesh-Patidar/myth-eye-cal/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-20%2F20%20passing-brightgreen)](docs/METRICS_REPORT.md#7-test-coverage-summary)
+[![sanitizers](https://img.shields.io/badge/ASan%2FLSan%2FUBSan-clean-brightgreen)](docs/METRICS_REPORT.md#43-leak--undefined-behaviour-audit-host-measured)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Distributed pose reconstruction across a self-organising network of commodity
 smartphones — render a person's live 3D pose from devices that have line of
 sight, on devices that don't. See [ARCHITECTURE.md](ARCHITECTURE.md) for the
@@ -108,13 +113,48 @@ tests/           unit/ + integration/
 docs/            ARCHITECTURE deep-dives, METRICS_REPORT, ACCURACY_METHODOLOGY, MITH_INTEGRATION
 ```
 
-## Metrics
+## Tests
 
-Measured latency, accuracy, memory, and throughput (host + device) are in
-[`docs/METRICS_REPORT.md`](docs/METRICS_REPORT.md). Highlights: fused accuracy
-~2.4 cm (mean) vs synthetic ground truth, 5.1 µs/frame fusion compute, device
-pose stream at 11.4 Hz, ~266 MB device PSS, zero leaks/UB under sanitizers.
+| Suite | Cases | Status |
+|---|---:|---|
+| Unit (`tests/unit`) | 14 | passing |
+| Integration (`tests/integration`) | 6 | passing |
+| **Total** (`ctest`) | **20** | **20 / 20 passing** |
+| Sanitizers (ASan + LSan + UBSan) | 20 | **zero leaks, zero UB** |
+
+```sh
+ctest --test-dir build --output-on-failure          # 20/20 (~0.34 s, Release)
+ctest --test-dir build-asan --output-on-failure     # 20/20, zero leaks/UB
+```
+
+Coverage breakdown and methodology:
+[`docs/METRICS_REPORT.md` §7](docs/METRICS_REPORT.md#7-test-coverage-summary).
+CI runs the full suite on every push/PR across a Debug+Release matrix plus a
+dedicated sanitizer job (see the badges above).
+
+## Metrics (pinned)
+
+Every figure is **measured**, not estimated. Full report, environments, and
+reproduction commands: [`docs/METRICS_REPORT.md`](docs/METRICS_REPORT.md).
+
+| Metric | Value | Source |
+|---|---|---|
+| Fused 3D accuracy (mean / max) | **2.42 cm / 9.04 cm** | `mec_bench` vs synthetic ground truth |
+| Fusion compute | **5.13 µs/frame** (195k frames/s) | host, 3 obs × 17 kp |
+| Scalar / anisotropic fuse | **19.2 ns / 64.0 ns** | host micro-benchmark |
+| Device → host pose stream | **11.4 Hz**, 17/17 kp, 0.78 conf | `ws_probe.py` on A059P (`lite`) |
+| Device memory (PSS) | **266 MB** | `dumpsys meminfo` |
+| Tests / sanitizers | **20/20**, zero leaks/UB | `ctest` + ASan/LSan/UBSan |
+| Debug APK (`lite`) | **27.8 MB** | build artifact |
+
+## Contributing
+
+Bug reports, issues, and pull requests are welcome — please read
+[`CONTRIBUTING.md`](CONTRIBUTING.md) first. It covers the contribution rules,
+the **issue format**, and the **pull-request format** (the repo also ships
+matching issue/PR templates under `.github/`).
 
 ## License
 
-Apache 2.0 (see ARCHITECTURE.md §10; `LICENSE` to be added).
+Licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE)
+(rationale in ARCHITECTURE.md §10).
